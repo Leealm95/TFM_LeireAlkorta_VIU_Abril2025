@@ -1,0 +1,1767 @@
+---
+title: "data_analysis_bp2"
+author: "Leire A. Murua"
+date: "2025-03-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(DECIPHER); packageVersion("DECIPHER")
+library(phangorn); packageVersion("phangorn")
+library(phyloseq); packageVersion("phyloseq")
+library(Biostrings); packageVersion("Biostrings")
+library(ggplot2); packageVersion("ggplot2")
+library(tidyverse); packageVersion("tidyverse")
+library(vegan); packageVersion("vegan")
+library(microbiome); packageVersion("microbiome")
+library(dplyr); packageVersion("dplyr")
+library(tidyr); packageVersion("tidyr")
+library(microViz); packageVersion("microViz")
+library(dada2); packageVersion("dada2")
+library(ggtree); packageVersion("ggtree")
+library(biomeUtils); packageVersion("biomeUtils")
+library(kableExtra); packageVersion("kableExtra")
+library(patchwork); packageVersion("patchwork")
+library(ggsci); packageVersion("ggsci")
+library(RColorBrewer); packageVersion("RColorBrewer")
+library(rstatix); packageVersion("rstatix")
+library(ggpubr); packageVersion("ggpubr")
+library(Maaslin2); packageVersion("Maaslin2")
+library(multcompView); packageVersion("multcompView")
+
+library(beepr)
+
+```
+
+## BIOPROJECT 2 WORKFLOW
+```{r}
+
+ps_2 <- ps %>% ps_filter(bioproject == "2")
+
+meta_2 <- sample_data(ps_2)
+
+sample_names_2 <- rownames(meta_2)
+
+sample_names_2 
+
+seqtab.nochim_951422 <- readRDS("../seqtab.nochim_951422.rds")
+
+rownames(seqtab.nochim_951422) <- sub("^\\d+\\.", "", rownames(seqtab.nochim_951422))
+
+seqtab_filtered_2 <- seqtab.nochim_951422[sample_names_2, ]
+
+seqs_2 <- getSequences(seqtab_filtered_2)
+names(seqs_2) <- seqs_2
+
+# alignment_2 <- AlignSeqs(DNAStringSet(seqs_2), anchor=NA)
+# saveRDS(alignment_2, "alignment_2.rds")
+alignment_2 <- readRDS("alignment_2.rds")
+
+
+# phang_align_2 <- phyDat(as(alignment_2, "matrix"), type="DNA")
+# saveRDS(phang_align_2, "phang_align_2.rds")
+phang_align_2 <- readRDS("phang_align_2.rds")
+
+
+## Check kind of distance
+# dm_2 <- dist.ml(phang_align_2)
+# 
+# saveRDS(dm_2, "dm_2.rds")
+dm_2 <- readRDS("dm_2.rds")
+
+
+# treeNJ_2 <- NJ(dm_2)
+# saveRDS(treeNJ_2, "treeNJ_2.rds")
+treeNJ_2 <- readRDS("treeNJ_2.rds")
+
+```
+
+
+```{r}
+ps_sum_2 <- summarize_phyloseq(ps_2)
+data.frame(do.call(rbind, ps_sum_2[c(1:10)]))
+
+```
+
+```{r}
+
+head(ps_2@otu_table, n=10) %>% kbl() %>% 
+  kableExtra::kable_paper(font_size = 12) %>% 
+  scroll_box(width = "800px", height = "300px")
+
+head(ps_2@tax_table, n=10) %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12) %>%
+  scroll_box(width = "800px", height = "300px")
+
+metadata_x_2 <- ps_2 %>% meta()
+head(metadata_x_2, n=10) %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12) %>%
+  scroll_box(width = "800px", height = "300px")
+
+ggtree(ps_2@phy_tree, options(ignore.negative.edge=TRUE))
+
+```
+
+
+```{r}
+# Chloroplast_2 <- ntaxa(subset_taxa(ps_2, Order == "Chloroplast"))
+# 
+# Mitochondria_2 <- ntaxa(subset_taxa(ps_2, Family == "Mitochondria"))
+# 
+# chl_mt_df_2 <- data.frame(Taxa = c("Chloroplast", "Mitochondria"),
+#                        nASVs = c(Chloroplast_2, Mitochondria_2)) %>%
+#   mutate(fraction = round(nASVs/ntaxa(ps_2), 3))
+# chl_mt_df_2 
+# 
+# ps_filt_2 <- subset_taxa(ps_2, Order != "Chloroplast")
+# ps_filt_2 <- subset_taxa(ps_filt_2, Family != "Mitochondria")
+
+ps_2@tax_table %>% 
+  data.frame() %>% 
+  group_by(Kingdom) %>% 
+  dplyr::count() %>%
+  mutate(fraction = round(n/ntaxa(ps_2), 3))
+
+ps_filt_2 <- subset_taxa(ps_2, Kingdom == "Bacteria")
+
+phylum_filt_table_2 <- ps_filt_2@tax_table %>% 
+  data.frame() %>% 
+  group_by(Phylum) %>% 
+  dplyr::count() %>% 
+  arrange(desc(n))
+
+phylum_filt_table_2
+
+write.csv(phylum_filt_table_2, "../Results/phylum_filt_table_2.csv", row.names = FALSE)
+
+ps_filt_sum_2 <- summarize_phyloseq(ps_filt_2)
+summary_ps_filt_table_2 <- data.frame(do.call(rbind, ps_filt_sum_2[c(1:10)]))
+write.csv(summary_ps_filt_table_2, "../Results/summary_ps_filt_table_2.csv", row.names = FALSE)
+
+summary_ps_filt_table_2
+
+```
+
+```{r}
+
+ps_filt_fixed_2 <- ps_filt_2 %>%
+ tax_fix(
+  min_length = 4,
+  sep="_", anon_unique=TRUE, 
+  suffix_rank="classified")
+
+ps_filt_fixed_2@tax_table
+  
+```
+
+
+```{r}
+
+sum_of_reads_2 <- as.data.frame(sample_sums(ps_filt_fixed_2@otu_table)) %>% rownames_to_column(var = "samples") %>%
+ dplyr::rename(sum_of_reads_2 = `sample_sums(ps_filt_fixed_2@otu_table)`)%>%
+  left_join((metadata_x_2 %>% rownames_to_column(var = "samples")), by = "samples")
+head((sum_of_reads_2 %>% arrange(sum_of_reads_2)), n=20)%>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12) %>%
+  scroll_box(width = "800px", height = "300px")
+
+
+
+```
+
+```{r}
+sum_of_reads_2 %>% arrange(sum_of_reads_2) %>% 
+  ggplot(aes(x = reorder(samples, sum_of_reads_2), y = sum_of_reads_2, fill = group)) +
+  geom_point(shape = 21, size = 2, color = "black")+
+  scale_fill_manual(values = c(
+    "remission-remission" = "orange",
+    "remission-active" = "darkred"
+    ))+
+  labs(x = "samples")+
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=90))
+
+
+```
+
+
+```{r}
+ps_filt_fixed_pruned_2 <- prune_taxa(taxa_sums(ps_filt_fixed_2) > 0, ps_filt_fixed_2) # Remove absent taxa
+
+
+ps_filt_fixed_gen_rel_2 <- ps_filt_fixed_pruned_2 %>% 
+  tax_transform("compositional", rank = "Genus")
+
+ps_filt_fixed_gen_rel_2@sam_data$group <- as.factor(ps_filt_fixed_gen_rel_2@sam_data$group)
+
+top_taxa_2 <- tax_top(ps_filt_fixed_gen_rel_2, n=40)
+
+ps_ff_gen_rel_end_2 <- ps_filt_fixed_gen_rel_2 %>% ps_filter(!is.na(disease_status_end))
+top_taxa_end_2 <- tax_top(ps_ff_gen_rel_end_2, n=40)
+
+melt_genus_rel_end_2 <- ps_filt_fixed_gen_rel_2 %>% psmelt() %>% 
+  mutate(Genus_top = case_when(Genus %in% top_taxa_end_2 ~ Genus, 
+                               TRUE ~ "other")) %>% 
+  mutate(Genus_top = as.factor(Genus_top)) %>% 
+  mutate(Genus_top = fct_relevel(Genus_top, c(top_taxa_end_2, "other"))) %>% 
+  filter(!is.na(disease_status_end))
+
+main_genus_end_2 <- melt_genus_rel_end_2 %>%
+  ggplot(aes(x = Sample, y = Abundance, fill = Genus_top)) +
+  geom_bar(stat = "identity", color = "black")+
+  scale_fill_manual(values = distinct_palette(40, pal = "brewerPlus", add = "grey70"))+
+  theme_bw()+
+  labs(title= "Genus Bar plot for end samples") +
+  theme(axis.title.x = element_blank(), legend.position = "right")
+
+ps_ff_gen_rel_base_2 <- ps_filt_fixed_gen_rel_2 %>% ps_filter(!is.na(baseline_status))
+top_taxa_base_2 <- tax_top(ps_ff_gen_rel_base_2, n=40)
+
+melt_genus_rel_base_2 <- ps_filt_fixed_gen_rel_2 %>% psmelt() %>% 
+  mutate(Genus_top = case_when(Genus %in% top_taxa_base_2 ~ Genus, 
+                               TRUE ~ "other")) %>% 
+  mutate(Genus_top = as.factor(Genus_top)) %>% 
+  mutate(Genus_top = fct_relevel(Genus_top, c(top_taxa_base_2, "other"))) %>% 
+  filter(!is.na(baseline_status))
+
+main_genus_base_2 <- melt_genus_rel_base_2 %>%
+  ggplot(aes(x = Sample, y = Abundance, fill = Genus_top)) +
+  geom_bar(stat = "identity", color = "black")+
+  scale_fill_manual(values = distinct_palette(40, pal = "brewerPlus", add = "grey70"))+
+  theme_bw()+
+  labs(title= "Genus Bar plot for baseline samples") +
+  theme(axis.title.x = element_blank(), legend.position = "right")
+
+
+
+ggsave("../Results/main_genus_end_2_barplot.png", main_genus_end_2, device = png, width = 10, height = 8)
+ggsave("../Results/main_genus_base_2_barplot.png", main_genus_base_2, device = png, width = 10, height = 8)
+
+main_genus_end_2
+main_genus_base_2
+
+
+```
+
+
+
+## Check for singletons and doubletons
+```{r}
+length(which(taxa_sums(ps_filt_fixed_pruned_2) <= 1))
+
+length(which(taxa_sums(ps_filt_fixed_pruned_2) <= 2))
+
+```
+
+
+```{r}
+
+taxa_sums(ps_filt_fixed_pruned_2) %>%
+  data.frame() %>%
+  dplyr::rename(sum = ".") %>%
+  arrange(sum)%>%
+  tail(n=20) %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12) %>%
+  scroll_box(width = "200px", height = "300px")
+
+```
+
+## Normalization and check distribution
+```{r}
+
+ps_filt_fixed_rel_2 <- tax_transform(ps_filt_fixed_pruned_2, trans = "compositional")
+head(ps_filt_fixed_rel_2@otu_table, n=10) 
+
+```
+
+
+## Transformation
+```{r}
+
+ps_filt_fixed_rel_clr_2 <- tax_transform(ps_filt_fixed_rel_2, trans = "clr", chain = TRUE)
+head(ps_filt_fixed_rel_clr_2@otu_table, n=10)
+
+
+```
+
+## Aggregate data at specific taxonomic rank: Phylum and Genus
+```{r}
+
+ps_filt_fixed_phylum_2 <- tax_agg(ps_filt_fixed_pruned_2, rank = "Phylum")
+ps_filt_fixed_class_2 <- tax_agg(ps_filt_fixed_pruned_2, rank = "Class")
+ps_filt_fixed_order_2 <- tax_agg(ps_filt_fixed_pruned_2, rank = "Order")
+ps_filt_fixed_family_2 <- tax_agg(ps_filt_fixed_pruned_2, rank = "Family")
+ps_filt_fixed_genus_2 <- tax_agg(ps_filt_fixed_pruned_2, rank = "Genus")
+#ps_filt_fixed_species_2 <- tax_agg(ps_filt_fixed_pruned_2, rank = "Species")
+
+print(ps_filt_fixed_phylum_2)
+print(ps_filt_fixed_genus_2)
+
+
+summary_agg_2 <- data.frame(Taxa = c(colnames(ps_filt_fixed_pruned_2@tax_table)[c(2:6)], "ASVs"),
+                 number_of_taxa=c(dim(ps_filt_fixed_phylum_2@otu_table)[2], dim(ps_filt_fixed_class_2@otu_table)[2], dim(ps_filt_fixed_order_2@otu_table)[2], dim(ps_filt_fixed_family_2@otu_table)[2], dim(ps_filt_fixed_genus_2@otu_table)[2], dim(ps_filt_fixed_pruned_2@otu_table)[2]))
+print(summary_agg_2)
+
+```
+
+
+## Data exploration
+```{r}
+barplots_group <- ps_filt_fixed_pruned_2 %>%
+  ps_mutate(host_sex = as.factor(host_sex)) %>%
+  ps_mutate(group = as.factor(group)) %>%
+  ps_arrange(group, week) %>% 
+  comp_barplot(group_by = "group", tax_level = "Phylum", 
+               tax_transform_for_plot = "compositional", n_taxa = 11, 
+               bar_width = 0.8, merge_other = FALSE, label = "week", 
+               sample_order = "default")
+
+barplots_group_wrapped <- wrap_plots(barplots_group) +
+  plot_layout(guides = "collect", nrow=2)
+
+groups_barplot <- barplots_group_wrapped&
+  facet_wrap("host_subject_id", scales = "free_x")& 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10), 
+        axis.ticks.y = element_blank(), leg.end.title = element_blank(), 
+        legend.position = "bottom", strip.text = element_text(size=12),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size=10))
+
+groups_barplot
+
+ggsave("../Results/groups_barplot.png", groups_barplot, width = 10, height = 8, dpi = 300)
+```
+
+
+```{r}
+
+barplots_genus_group <- ps_filt_fixed_pruned_2 %>%
+  ps_mutate(host_sex = as.factor(host_sex)) %>%
+  ps_mutate(group = as.factor(group)) %>%
+  ps_arrange(group, week) %>% 
+  comp_barplot(group_by = "group", tax_level = "Genus", 
+               tax_transform_for_plot = "compositional", n_taxa = 11, 
+               bar_width = 0.8, merge_other = FALSE, label = "week", 
+               sample_order = "default")
+
+barplots_genus_group_wrapped <- wrap_plots(barplots_genus_group) +
+  plot_layout(guides = "collect", nrow=2)
+
+groups_genus_barplot <- barplots_genus_group_wrapped&
+  facet_wrap("host_subject_id", scales = "free_x")& 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10), 
+        axis.ticks.y = element_blank(), leg.end.title = element_blank(), 
+        legend.position = "bottom", strip.text = element_text(size=12),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size=10))
+
+groups_genus_barplot
+
+ggsave("../Results/groups_genus_barplot.png", groups_genus_barplot, width = 10, height = 8, dpi = 300)
+
+```
+
+
+```{r}
+create_group_barplot <- function(ps_obj, group_name) {
+  ps_subset <- ps_obj %>% ps_filter(group == group_name)
+  
+  barplot <- ps_subset %>%
+    ps_mutate(host_sex = as.factor(host_sex)) %>%
+    ps_mutate(group = as.factor(group)) %>%
+    ps_arrange(group, week) %>%
+    comp_barplot(group_by = "group", tax_level = "Phylum",
+                 tax_transform_for_plot = "compositional", n_taxa = 11,
+                 bar_width = 0.8, merge_other = FALSE, label = "week",
+                 sample_order = "default")
+  
+  wrapped_plot <- wrap_plots(barplot) +
+    plot_layout(guides = "collect") &
+    facet_wrap("host_subject_id", scales = "free_x") &
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10),
+          axis.ticks.y = element_blank(), legend.title = element_blank(),
+          legend.position = "bottom", strip.text = element_text(size = 12),
+          legend.key.size = unit(0.4, "cm"),
+          legend.text = element_text(size = 10))
+  
+  return(wrapped_plot)
+}
+
+plot_1 <- create_group_barplot(ps_filt_fixed_pruned_2, "remission-remission")
+plot_2 <- create_group_barplot(ps_filt_fixed_pruned_2, "remission-active")
+
+ggsave("../Results/rem-rem_barplot.png", plot_1, width = 10, height = 8, dpi = 300)
+ggsave("../Results/rem-ac_barplot.png", plot_2, width = 10, height = 8, dpi = 300)
+
+plot_1
+plot_2
+
+
+```
+
+
+```{r}
+create_group_barplots <- function(ps_obj, group_name, max_per_plot = 6, output_prefix = "plot") {
+  ps_subset <- ps_obj %>% ps_filter(group == group_name)
+  
+  subject_ids <- unique(sample_data(ps_subset)$host_subject_id)
+  
+  subject_batches <- split(subject_ids, ceiling(seq_along(subject_ids) / max_per_plot))
+  
+  plots <- list()
+  
+  for (i in seq_along(subject_batches)) {
+    subjects <- subject_batches[[i]]
+    
+    ps_batch <- ps_subset %>% ps_filter(host_subject_id %in% subjects)
+    
+    barplot <- ps_batch %>%
+      ps_mutate(host_sex = as.factor(host_sex)) %>%
+      ps_mutate(group = as.factor(group)) %>%
+      ps_arrange(group, week) %>%
+      comp_barplot(group_by = "group", tax_level = "Phylum",
+                   tax_transform_for_plot = "compositional", n_taxa = 11,
+                   bar_width = 0.8, merge_other = FALSE, label = "week",
+                   sample_order = "default")
+    
+    wrapped_plot <- wrap_plots(barplot) +
+      plot_layout(guides = "collect") &
+      facet_wrap("host_subject_id", scales = "free_x") &
+      theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10),
+            axis.ticks.y = element_blank(), legend.title = element_blank(),
+            legend.position = "bottom", strip.text = element_text(size = 12),
+            legend.key.size = unit(0.4, "cm"),
+            legend.text = element_text(size = 10))
+    
+    plots[[i]] <- wrapped_plot
+    
+    ggsave(filename = paste0(output_prefix, "_2_batch_", i, ".png"), plot = wrapped_plot, 
+           path = "../Results/", width = 10, height = 8, dpi = 300)
+  }
+  
+  return(plots)
+}
+
+plots_rem_rem_2 <- create_group_barplots(ps_filt_fixed_pruned_2, "remission-remission", max_per_plot = 6, output_prefix = "rem_rem_barplot")
+plots_rem_active_2 <- create_group_barplots(ps_filt_fixed_pruned_2, "remission-active", max_per_plot = 6, output_prefix = "rem_active_barplot")
+
+plots_rem_rem_2
+
+plots_rem_active_2
+
+```
+
+
+
+```{r}
+create_genus_group_barplot <- function(ps_obj, group_name) {
+  ps_subset <- ps_obj %>% ps_filter(group == group_name)
+  
+  barplot <- ps_subset %>%
+    ps_mutate(host_sex = as.factor(host_sex)) %>%
+    ps_mutate(group = as.factor(group)) %>%
+    ps_arrange(group, week) %>%
+    comp_barplot(group_by = "group", tax_level = "Genus",
+                 tax_transform_for_plot = "compositional", n_taxa = 11,
+                 bar_width = 0.8, merge_other = FALSE, label = "week",
+                 sample_order = "default")
+  
+  wrapped_plot <- wrap_plots(barplot) +
+    plot_layout(guides = "collect") &
+    facet_wrap("host_subject_id", scales = "free_x") &
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10),
+          axis.ticks.y = element_blank(), legend.title = element_blank(),
+          legend.position = "bottom", strip.text = element_text(size = 12),
+          legend.key.size = unit(0.4, "cm"),
+          legend.text = element_text(size = 10))
+  
+  return(wrapped_plot)
+}
+
+plot_genus_1 <- create_genus_group_barplot(ps_filt_fixed_pruned_2, "remission-remission")
+plot_genus_2 <- create_genus_group_barplot(ps_filt_fixed_pruned_2, "remission-active")
+
+ggsave("../Results/rem-rem_genus_barplot.png", plot_genus_1, width = 10, height = 8, dpi = 300)
+ggsave("../Results/rem-ac_genus_barplot.png", plot_genus_2, width = 10, height = 8, dpi = 300)
+
+plot_genus_1
+plot_genus_2
+
+
+```
+
+```{r}
+create_group_barplots <- function(ps_obj, group_name, max_per_plot = 6, output_prefix = "plot") {
+  ps_subset <- ps_obj %>% ps_filter(group == group_name)
+  
+  subject_ids <- unique(sample_data(ps_subset)$host_subject_id)
+  
+  subject_batches <- split(subject_ids, ceiling(seq_along(subject_ids) / max_per_plot))
+  
+  plots <- list()
+  
+  for (i in seq_along(subject_batches)) {
+    subjects <- subject_batches[[i]]
+    
+    ps_batch <- ps_subset %>% ps_filter(host_subject_id %in% subjects)
+    
+    barplot <- ps_batch %>%
+      ps_mutate(host_sex = as.factor(host_sex)) %>%
+      ps_mutate(group = as.factor(group)) %>%
+      ps_arrange(group, week) %>%
+      comp_barplot(group_by = "group", tax_level = "Genus",
+                   tax_transform_for_plot = "compositional", n_taxa = 11,
+                   bar_width = 0.8, merge_other = FALSE, label = "week",
+                   sample_order = "default")
+    
+    wrapped_plot <- wrap_plots(barplot) +
+      plot_layout(guides = "collect") &
+      facet_wrap("host_subject_id", scales = "free_x") &
+      theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10),
+            axis.ticks.y = element_blank(), legend.title = element_blank(),
+            legend.position = "bottom", strip.text = element_text(size = 12),
+            legend.key.size = unit(0.4, "cm"),
+            legend.text = element_text(size = 10))
+    
+    plots[[i]] <- wrapped_plot
+    
+    ggsave(filename = paste0(output_prefix, "_2_genus_batch_", i, ".png"), plot = wrapped_plot, 
+           path = "../Results/", width = 10, height = 8, dpi = 300)
+  }
+  
+  return(plots)
+}
+
+plots_genus_rem_rem_2 <- create_group_barplots(ps_filt_fixed_pruned_2, "remission-remission", max_per_plot = 6, output_prefix = "rem_rem_barplot")
+plots_genus_rem_ac_2 <- create_group_barplots(ps_filt_fixed_pruned_2, "remission-active", max_per_plot = 6, output_prefix = "rem_active_barplot")
+
+plots_genus_rem_rem_2
+
+plots_genus_rem_ac_2
+
+
+```
+
+
+
+## Alpha diversity
+```{r}
+meta_951422 <- as.data.frame(as.matrix(sample_data(ps_filt_fixed_pruned_2)))
+
+alpha_div_2 <- estimate_richness(ps_filt_fixed_pruned_2, measures = c("Observed", "Shannon", "InvSimpson", "Chao1"))
+PD_2 <- calculatePD(ps_filt_fixed_pruned_2, justDF = TRUE, include_root = FALSE) %>% pull(PD)
+alpha_div_2 <- alpha_div_2 %>% mutate(PD = PD_2)
+rownames(alpha_div_2) <- gsub("^X", "", rownames(alpha_div_2))
+head(alpha_div_2, n=20)
+
+metadata_samples_alpha_2 <- bind_cols(meta_951422, alpha_div_2)
+metadata_samples_long_2 <- metadata_samples_alpha_2 %>% pivot_longer(cols= Observed:PD, names_to = "alpha_div", values_to = "value")
+kruskal_test_alpha_2 <- metadata_samples_long_2 %>% group_by(alpha_div) %>%
+    rstatix::kruskal_test(value ~ group) %>% mutate(p_adj_BH = p.adjust(p, method = "BH"))
+
+write.csv(kruskal_test_alpha_2, "../Results/kruskal_test_alpha_2.csv", row.names = FALSE)
+
+kruskal_test_alpha_2
+
+```
+
+```{r}
+dunn_test_alpha_2 <- metadata_samples_long_2 %>% group_by(alpha_div) %>%
+    rstatix::dunn_test(value ~ group, p.adjust.method = "BH") %>%
+  add_xy_position(x = "group", fun = "mean_sd", step.increase = 0.05, scales = "free")
+dunn_test_alpha_2 %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12)
+
+dunn_test_alpha_table_2 <- apply(dunn_test_alpha_2,2,as.character)
+write.csv(dunn_test_alpha_table_2, "../Results/dunn_test_alpha_table_2.csv", row.names = FALSE)
+
+```
+
+```{r}
+
+dunn_test_alpha_plot_2 <- ggplot(metadata_samples_long_2, aes(x = group, y = value)) +
+  geom_boxplot() +
+  geom_jitter(shape = 21, color = "black", size = 2, aes(fill = group)) +
+  facet_wrap(~alpha_div, scales = "free", ncol = 3) +
+  scale_fill_nejm() +
+  stat_pvalue_manual(data = dunn_test_alpha_2, 
+                     label = "p.adj.signif", tip.length = 0.01, bracket.shorten = 0.05,
+                     hide.ns = TRUE, size = 4) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 10), legend.position = "none")
+
+ggsave("../Results/dunn_test_alpha_plot_2.png", dunn_test_alpha_plot_2, width = 13, height = 8, dpi = 300)
+
+dunn_test_alpha_plot_2
+
+
+```
+
+```{r}
+
+metadata_samples_alpha_2
+
+kruskal_chao1_2 <- kruskal.test(Chao1 ~ group, data = metadata_samples_alpha_2)
+kruskal_shannon_2 <- kruskal.test(Shannon ~ group, data = metadata_samples_alpha_2)
+kruskal_invsimps <- kruskal.test(InvSimpson ~ group, data = metadata_samples_alpha_2)
+kruskal_obsv_2 <- kruskal.test(Observed ~ group, data = metadata_samples_alpha_2)
+kruskal_pd_2 <- kruskal.test(PD ~ group, data = metadata_samples_alpha_2)
+
+
+H_chao1_2 <- kruskal_chao1_2$statistic
+p_chao1_2 <- kruskal_chao1_2$p.value
+
+H_shannon_2 <- kruskal_shannon_2$statistic
+p_shannon_2 <- kruskal_shannon_2$p.value
+
+H_invsimps_2 <- kruskal_invsimps$statistic
+p_invsimps_2 <- kruskal_invsimps$p.value
+
+H_obsv_2 <- kruskal_obsv_2$statistic
+p_obsv_2 <- kruskal_obsv_2$p.value
+
+H_pd_2 <- kruskal_pd_2$statistic
+p_pd_2 <- kruskal_pd_2$p.value
+
+cat("Kruskal-Wallis test for Chao1 index: H =", round(H_chao1_2, 3), "p =", round(p_chao1_2, 3), "\n")
+cat("Kruskal-Wallis test for Shannon index: H =", round(H_shannon_2, 3), "p =", round(p_shannon_2, 3), "\n")
+cat("Kruskal-Wallis test for Inverse Simpson index: H =", round(H_invsimps_2, 3), "p =", round(p_invsimps_2, 3), "\n")
+cat("Kruskal-Wallis test for Observed Number of Species: H =", round(H_obsv_2, 3), "p =", round(p_obsv_2, 3), "\n")
+cat("Kruskal-Wallis test for Faith's Phylogenetic Diversity: H =", round(H_pd_2, 3), "p =", round(p_pd_2, 3), "\n")
+
+
+dunn_chao1_2 <- dunn_test_alpha_2 %>% filter(alpha_div == "Chao1")
+dunn_shannon_2 <- dunn_test_alpha_2 %>% filter(alpha_div == "Shannon")
+dunn_invsimps_2 <- dunn_test_alpha_2 %>% filter(alpha_div == "InvSimpson")
+dunn_obsv_2 <- dunn_test_alpha_2 %>% filter(alpha_div == "Observed")
+dunn_pd_2 <- dunn_test_alpha_2 %>% filter(alpha_div == "PD")
+
+
+significant_chao1_2 <- dunn_chao1_2 %>% filter(p.adj < 0.05)
+significant_shannon_2 <- dunn_shannon_2 %>% filter(p.adj < 0.05)
+significant_invsimps_2 <- dunn_invsimps_2 %>% filter(p.adj < 0.05)
+significant_obsv_2 <- dunn_obsv_2 %>% filter(p.adj < 0.05)
+significant_pd_2 <- dunn_pd_2 %>% filter(p.adj < 0.05)
+
+
+print(significant_chao1_2)
+print(significant_shannon_2)
+print(significant_invsimps_2)
+print(significant_obsv_2)
+print(significant_pd_2)
+
+alpha_summary_2 <- metadata_samples_alpha_2 %>%
+  group_by(group) %>%
+  summarise(
+    Chao1_mean = mean(Chao1, na.rm = TRUE),
+    Chao1_sd = sd(Chao1, na.rm = TRUE),
+    Shannon_mean = mean(Shannon, na.rm = TRUE),
+    Shannon_sd = sd(Shannon, na.rm = TRUE),
+    InvSimps_mean = mean(InvSimpson, na.rm = TRUE),
+    InvSimps_sd = sd(InvSimpson, na.rm = TRUE), 
+    Obsv_mean = mean(Observed, na.rm = TRUE),
+    Obsv_sd = sd(Observed, na.rm = TRUE),
+    PD_mean = mean(PD, na.rm = TRUE),
+    PD_sd = sd(PD, na.rm = TRUE)
+  )
+
+print(alpha_summary_2)
+
+write.csv(alpha_summary_2, "../Results/alpha_summary_2_table.csv", row.names = FALSE)
+
+```
+
+
+## Rarefied
+
+```{r}
+library(ranacapa); packageVersion("ranacapa")
+
+ps_filt_fixed_pruned_2 %>% 
+  ggrare(step = 50, color = "group", se = FALSE)
+
+```
+
+
+```{r}
+set.seed(19950622)
+
+ps_ff_rare_2 <- rarefy_even_depth(ps_filt_fixed_pruned_2, sample.size = 10558, replace = FALSE)
+
+ps_ff_rare_2 %>% 
+  ggrare(step = 50, color = "group", se = FALSE)
+
+alpha_div_rare_2 <- estimate_richness(ps_ff_rare_2, measures = c("Observed", "Shannon", "InvSimpson", "Chao1"))
+PD_rare_2 <- calculatePD(ps_ff_rare_2, justDF = TRUE, include_root = FALSE) %>% pull(PD)
+alpha_div_rare_2 <- alpha_div_rare_2 %>% mutate(PD = PD_rare_2)
+rownames(alpha_div_rare_2) <- gsub("^X", "", rownames(alpha_div_rare_2))
+head(alpha_div_rare_2, n=20)
+
+meta_rare_2 <- as.data.frame(as.matrix(sample_data(ps_ff_rare_2)))
+
+metadata_samples_alpha_2_rare <- bind_cols(meta_rare_2, alpha_div_rare_2)
+metadata_samples_long_rare_2 <- metadata_samples_alpha_2_rare %>% pivot_longer(cols= Observed:PD, names_to = "alpha_div", values_to = "value")
+kruskal_test_alpha_rare_2 <- metadata_samples_long_rare_2 %>% group_by(alpha_div) %>%
+  rstatix::kruskal_test(value ~ group) %>% mutate(p_adj_BH = p.adjust(p, method = "BH"))
+
+kruskal_test_alpha_rare_2
+
+write.csv(kruskal_test_alpha_rare_2, "../Results/kruskal_test_alpha_rare_2.csv", row.names = FALSE)
+
+dunn_test_alpha_rare_2 <- metadata_samples_long_rare_2 %>% group_by(alpha_div) %>%
+  rstatix::dunn_test(value ~ group, p.adjust.method = "BH") %>%
+  add_xy_position(x = "group", fun = "mean_sd", step.increase = 0.05, scales = "free")
+dunn_test_alpha_rare_2 %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12)
+
+dunn_test_alpha_rare_table_2 <- apply(dunn_test_alpha_rare_2,2,as.character)
+write.csv(dunn_test_alpha_rare_table_2, "../Results/dunn_test_alpha_rare_table_2.csv", row.names = FALSE)
+
+dunn_test_alpha_rare_plot_2 <- ggplot(metadata_samples_long_rare_2, aes(x = group, y = value)) +
+  geom_boxplot() +
+  geom_jitter(shape = 21, color = "black", size = 2, aes(fill = group)) +
+  facet_wrap(~alpha_div, scales = "free", ncol = 3) +
+  scale_fill_nejm() +
+  stat_pvalue_manual(data = dunn_test_alpha_rare_2, 
+                     label = "p.adj.signif", tip.length = 0.01, bracket.shorten = 0.05,
+                     hide.ns = TRUE, size = 4) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 10), legend.position = "none")
+
+ggsave("../Results/dunn_test_alpha_rare_plot_2.png", dunn_test_alpha_rare_plot_2, width = 13, height = 8, dpi = 300)
+
+dunn_test_alpha_rare_plot_2
+
+```
+
+
+```{r}
+
+metadata_samples_alpha_2_rare
+
+kruskal_chao1_2_rare <- kruskal.test(Chao1 ~ group, data = metadata_samples_alpha_2_rare)
+kruskal_shannon_2_rare <- kruskal.test(Shannon ~ group, data = metadata_samples_alpha_2_rare)
+kruskal_invsimps_rare <- kruskal.test(InvSimpson ~ group, data = metadata_samples_alpha_2_rare)
+kruskal_obsv_2_rare <- kruskal.test(Observed ~ group, data = metadata_samples_alpha_2_rare)
+kruskal_pd_2_rare <- kruskal.test(PD ~ group, data = metadata_samples_alpha_2_rare)
+
+
+
+H_chao1_2_rare <- kruskal_chao1_2_rare$statistic
+p_chao1_2_rare <- kruskal_chao1_2_rare$p.value
+
+H_shannon_2_rare <- kruskal_shannon_2_rare$statistic
+p_shannon_2_rare <- kruskal_shannon_2_rare$p.value
+
+H_invsimps_2_rare <- kruskal_invsimps_rare$statistic
+p_invsimps_2_rare <- kruskal_invsimps_rare$p.value
+
+H_obsv_2_rare <- kruskal_obsv_2_rare$statistic
+p_obsv_2_rare <- kruskal_obsv_2_rare$p.value
+
+H_pd_2_rare <- kruskal_pd_2_rare$statistic
+p_pd_2_rare <- kruskal_pd_2_rare$p.value
+
+
+cat("Kruskal-Wallis test for Chao1 index: H =", round(H_chao1_2_rare, 3), "p =", round(p_chao1_2_rare, 3), "\n")
+cat("Kruskal-Wallis test for Shannon index: H =", round(H_shannon_2_rare, 3), "p =", round(p_shannon_2_rare, 3), "\n")
+cat("Kruskal-Wallis test for Inverse Simpson index: H =", round(H_invsimps_2_rare, 3), "p =", round(p_invsimps_2_rare, 3), "\n")
+cat("Kruskal-Wallis test for Observed Number of Species: H =", round(H_obsv_2_rare, 3), "p =", round(p_obsv_2_rare, 3), "\n")
+cat("Kruskal-Wallis test for Faith's Phylogenetic Diversity: H =", round(H_pd_2_rare, 3), "p =", round(p_pd_2_rare, 3), "\n")
+
+
+
+dunn_chao1_2_rare <- dunn_test_alpha_rare_2 %>% filter(alpha_div == "Chao1")
+dunn_shannon_2_rare <- dunn_test_alpha_rare_2 %>% filter(alpha_div == "Shannon")
+dunn_invsimps_2_rare <- dunn_test_alpha_rare_2 %>% filter(alpha_div == "InvSimpson")
+dunn_obsv_2_rare <- dunn_test_alpha_rare_2 %>% filter(alpha_div == "Observed")
+dunn_pd_2_rare <- dunn_test_alpha_rare_2 %>% filter(alpha_div == "PD")
+
+
+significant_chao1_2_rare <- dunn_chao1_2_rare %>% filter(p.adj < 0.05)
+significant_shannon_2_rare <- dunn_shannon_2_rare %>% filter(p.adj < 0.05)
+significant_invsimps_2_rare <- dunn_invsimps_2_rare %>% filter(p.adj < 0.05)
+significant_obsv_2_rare <- dunn_obsv_2_rare %>% filter(p.adj < 0.05)
+significant_pd_2_rare <- dunn_pd_2_rare %>% filter(p.adj < 0.05)
+
+
+print(significant_chao1_2_rare)
+print(significant_shannon_2_rare)
+print(significant_invsimps_2_rare)
+print(significant_obsv_2_rare)
+print(significant_pd_2_rare)
+
+alpha_rare_summary_2 <- metadata_samples_alpha_2_rare %>%
+  group_by(group) %>%
+  summarise(
+    Chao1_mean = mean(Chao1, na.rm = TRUE),
+    Chao1_sd = sd(Chao1, na.rm = TRUE),
+    Shannon_mean = mean(Shannon, na.rm = TRUE),
+    Shannon_sd = sd(Shannon, na.rm = TRUE),
+    InvSimps_mean = mean(InvSimpson, na.rm = TRUE),
+    InvSimps_sd = sd(InvSimpson, na.rm = TRUE), 
+    Obsv_mean = mean(Observed, na.rm = TRUE),
+    Obsv_sd = sd(Observed, na.rm = TRUE),
+    PD_mean = mean(PD, na.rm = TRUE),
+    PD_sd = sd(PD, na.rm = TRUE)
+  )
+
+print(alpha_rare_summary_2)
+write.csv(alpha_rare_summary_2, "../Results/alpha_rare_summary_table_2.csv", row.names = FALSE)
+
+```
+
+## Beta diversity
+```{r}
+PCoA_ASV_bray_2 <- ordinate(ps_filt_fixed_rel_2, distance = "bray", method = "PCoA")
+beta_ASV_bray_2 <- phyloseq::distance(ps_filt_fixed_rel_2, "bray")
+ado_bray_group_2 <- adonis2(beta_ASV_bray_2 ~ group, meta_951422)
+print(ado_bray_group_2)
+
+group.bd_2 <- betadisper(d = beta_ASV_bray_2, group = meta_951422$group, type="centroid")
+bd_group_boxplot_2 <- boxplot(group.bd_2)
+
+bd_group_boxplot_2
+
+png("../Results/beta_dispersion_bc_boxplot_2.png", width = 3500, height = 2000, res = 300)  
+boxplot(group.bd_2, main = "Beta Dispersion per Group (BC) BP2", cex.axis = 1.2, cex.lab = 1.5)
+dev.off()
+
+permutest(group.bd_2)
+
+
+BC_pcoa_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_bray_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = group,  fill = group))+
+  geom_point(size = 3, shape = 21, aes(fill = group))+
+  stat_mean(aes(fill = group), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_bray_group_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_bray_group_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Group")+
+  scale_color_nejm(name = "Group")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/BC_pcoa_plot_2.png", BC_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+BC_pcoa_plot_2
+
+ps_filt_fixed_rel_2@sam_data$host_sex <- as.factor(ps_filt_fixed_rel_2@sam_data$host_sex)
+
+ado_bray_sex_2 <- adonis2(beta_ASV_bray_2 ~ host_sex, meta_951422)
+print(ado_bray_sex_2)
+
+BC_pcoa_sex_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_bray_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = host_sex,  fill = host_sex))+
+  geom_point(size = 3, shape = 21, aes(fill = host_sex))+
+  stat_mean(aes(fill = host_sex), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_bray_sex_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_bray_sex_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Host sex")+
+  scale_color_nejm(name = "Host Sex")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/BC_pcoa_sex_plot_2.png", BC_pcoa_sex_plot_2, width = 10, height = 8, dpi = 300)
+
+BC_pcoa_sex_plot_2
+
+bd_bc_df_2 <- data.frame(samples = rownames(group.bd_2$vectors),
+                         distances = group.bd_2$distances,
+                         group = meta_951422$group)
+
+kruskal_bc_test_2 <- bd_bc_df_2 %>% rstatix::kruskal_test(distances ~ group)
+print(kruskal_bc_test_2)
+
+
+dunn_bc_test_2 <- bd_bc_df_2 %>% rstatix::dunn_test(distances ~ group, p.adjust.method = "BH")
+print(dunn_bc_test_2)
+
+dunn_bc_test_table_2 <- apply(dunn_bc_test_2,2,as.character)
+write.csv(dunn_bc_test_table_2, "../Results/dunn_bc_test_table_2.csv", row.names = FALSE)
+
+
+dunn_bc_pvalues_2 <- dunn_bc_test_2 %>% select(group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj) %>%
+  column_to_rownames(var = "group1")
+
+
+dunn_bc_matrix_2 <- as.matrix(dunn_bc_pvalues_2)
+
+dunn_bc_matrix_2[lower.tri(dunn_bc_matrix_2)] <- t(dunn_bc_matrix_2)[lower.tri(dunn_bc_matrix_2)]
+
+
+
+dunn_bc_labels_2 <- multcompLetters(dunn_bc_matrix_2)$Letters
+print(dunn_bc_labels_2)
+
+```
+
+```{r}
+## Set root for WU so it runs with the same root as previous wu analysis
+
+# ASV3504
+
+# Define the root sequence (use the exact sequence you mentioned before)
+root_seq <- "ASV3504"
+
+# Extract tree from phyloseq object
+tree_2 <- phy_tree(ps_filt_fixed_rel_2)
+
+# Set the root
+tree_rooted_2 <- root(tree_2, outgroup = root_seq, resolve.root = TRUE)
+
+# Replace the tree in the phyloseq object
+phy_tree(ps_filt_fixed_rel_2) <- tree_rooted_2
+# ggtree(ps_filt_fixed_rel@phy_tree, options(ignore.negative.edge=TRUE))
+
+
+PCoA_ASV_wunifrac_2 <- ordinate(ps_filt_fixed_rel_2, distance = "wunifrac", method = "PCoA")
+beta_ASV_wunifrac_2 <- phyloseq::distance(ps_filt_fixed_rel_2, "wunifrac")
+ado_wunifrac_group_2 <- adonis2(beta_ASV_wunifrac_2 ~ group, meta_951422)
+print(ado_wunifrac_group_2)
+
+
+group_wunifrac.bd_2 <- betadisper(d = beta_ASV_wunifrac_2, group = meta_951422$group, type="centroid")
+boxplot(group_wunifrac.bd_2)
+
+png("../Results/beta_dispersion_wu_boxplot_2.png", width = 3500, height = 2000, res = 300)  
+boxplot(group_wunifrac.bd_2, main = "Beta Dispersion per Group (WU) BP2", cex.axis = 1.2, cex.lab = 1.5)
+dev.off()
+
+permutest(group_wunifrac.bd_2)
+
+
+WU_pcoa_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_wunifrac_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = group,  fill = group))+
+  geom_point(size = 3, shape = 21, aes(fill = group))+
+  stat_mean(aes(fill = group), shape = 23, size = 4) + 
+  annotate("text", x = 0.1, y = -0.15, color = "black", label = paste0("p=", round(ado_wunifrac_group_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = 0.1, y = -0.13, color = "black", label = paste0("R\u00b2=", round((ado_wunifrac_group_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Group")+
+  scale_color_nejm(name = "Group")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_pcoa_plot_2.png", WU_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+
+WU_pcoa_plot_2 
+
+ado_wunifrac_sex_2 <- adonis2(beta_ASV_wunifrac_2 ~ host_sex, meta_951422)
+print(ado_wunifrac_sex_2)
+
+WU_pcoa_sex_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_wunifrac_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = host_sex,  fill = host_sex))+
+  geom_point(size = 3, shape = 21, aes(fill = host_sex))+
+  stat_mean(aes(fill = host_sex), shape = 23, size = 4) + 
+  annotate("text", x = 0.1, y = -0.15, color = "black", label = paste0("p=", round(ado_wunifrac_sex_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = 0.1, y = -0.13, color = "black", label = paste0("R\u00b2=", round((ado_wunifrac_sex_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Host sex")+
+  scale_color_nejm(name = "Host sex")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_pcoa_sex_plot_2.png", WU_pcoa_sex_plot_2, width = 10, height = 8, dpi = 300)
+
+WU_pcoa_sex_plot_2
+
+wu_bd_bc_df_2 <- data.frame(samples = rownames(group_wunifrac.bd_2$vectors),
+                         distances = group_wunifrac.bd_2$distances,
+                         group = meta_951422$group)
+
+kruskal_wu_test_2 <- wu_bd_bc_df_2 %>% rstatix::kruskal_test(distances ~ group)
+print(kruskal_wu_test_2)
+
+
+dunn_wu_test_2 <- wu_bd_bc_df_2 %>% rstatix::dunn_test(distances ~ group, p.adjust.method = "BH", detailed = TRUE)
+print(dunn_wu_test_2)
+
+dunn_wu_test_table_2 <- apply(dunn_wu_test_2,2,as.character)
+write.csv(dunn_wu_test_table_2, "../Results/dunn_wu_test_table_2.csv", row.names = FALSE)
+
+
+dunn_wu_pvalues_2 <- dunn_wu_test_2 %>% select(group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj) %>%
+  column_to_rownames(var = "group1")
+
+
+dunn_wu_matrix_2 <- as.matrix(dunn_wu_pvalues_2)
+
+dunn_wu_matrix_2[lower.tri(dunn_wu_matrix_2)] <- t(dunn_wu_matrix_2)[lower.tri(dunn_wu_matrix_2)]
+
+
+
+dunn_wu_labels_2 <- multcompLetters(dunn_wu_matrix_2)$Letters
+print(dunn_wu_labels_2)
+
+```
+## Alpha and beta diversity by disease_status (general)
+```{r}
+
+ps_ff_gen_status_pruned_2 <- ps_filt_fixed_pruned_2 %>% ps_mutate(disease_status = as.factor(disease_status))
+
+meta_genstatus_2 <- as.matrix(sample_data(ps_ff_gen_status_pruned_2))
+
+alpha_div_genstat_2 <- estimate_richness(ps_ff_gen_status_pruned_2, measures = c("Observed", "Shannon", "InvSimpson", "Chao1"))
+PD_genstat_2 <- calculatePD(ps_ff_gen_status_pruned_2, justDF = TRUE, include_root = FALSE) %>% pull(PD)
+alpha_div_genstat_2 <- alpha_div_genstat_2 %>% mutate(PD = PD_genstat_2)
+rownames(alpha_div_genstat_2) <- gsub("^X", "", rownames(alpha_div_genstat_2))
+head(alpha_div_genstat_2, n=20)
+
+metadata_samples_alpha_genstat_2 <- bind_cols(meta_genstatus_2, alpha_div_genstat_2)
+metadata_samples_long_genstat_2 <- metadata_samples_alpha_genstat_2 %>% pivot_longer(cols= Observed:PD, names_to = "alpha_div", values_to = "value")
+kruskal_test_alpha_genstat_2 <- metadata_samples_long_genstat_2 %>% group_by(alpha_div) %>%
+  rstatix::kruskal_test(value ~ disease_status) %>% mutate(p_adj_BH = p.adjust(p, method = "BH"))
+
+kruskal_test_alpha_genstat_2
+write.csv(kruskal_test_alpha_genstat_2, "../Results/kruskal_test_alpha_genstat_2.csv", row.names = FALSE)
+
+dunn_test_alpha_genstat_2 <- metadata_samples_long_genstat_2 %>% group_by(alpha_div) %>%
+  rstatix::dunn_test(value ~ disease_status, p.adjust.method = "BH") %>%
+  add_xy_position(x = "disease_status", fun = "mean_sd", step.increase = 0.05, scales = "free")
+dunn_test_alpha_genstat_2 %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12)
+
+dunn_test_alpha_genstat_table_2 <- apply(dunn_test_alpha_genstat_2,2,as.character)
+write.csv(dunn_test_alpha_genstat_table_2, "../Results/dunn_test_alpha_genstat_table_2.csv", row.names = FALSE)
+
+
+dunn_test_alpha_genstat_plot_2 <- ggplot(metadata_samples_long_genstat_2, aes(x = disease_status, y = value)) +
+  geom_boxplot() +
+  geom_jitter(shape = 21, color = "black", size = 2, aes(fill = disease_status)) +
+  facet_wrap(~alpha_div, scales = "free", ncol = 3) +
+  scale_fill_nejm() +
+  stat_pvalue_manual(data = dunn_test_alpha_genstat_2, 
+                     label = "p.adj.signif", tip.length = 0.01, bracket.shorten = 0.05,
+                     hide.ns = TRUE, size = 4) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 10), legend.position = "none")
+
+ggsave("../Results/dunn_test_alpha_genstat_plot_2.png", dunn_test_alpha_genstat_plot_2, width = 13, height = 8, dpi = 300)
+
+dunn_test_alpha_genstat_plot_2
+
+
+metadata_samples_alpha_genstat_2
+
+kruskal_chao1_genstat_2 <- kruskal.test(Chao1 ~ disease_status, data = metadata_samples_alpha_genstat_2)
+kruskal_shannon_genstat_2 <- kruskal.test(Shannon ~ disease_status, data = metadata_samples_alpha_genstat_2)
+kruskal_invsimps_genstat_2 <- kruskal.test(InvSimpson ~ disease_status, data = metadata_samples_alpha_genstat_2)
+kruskal_obsv_genstat_2 <- kruskal.test(Observed ~ disease_status, data = metadata_samples_alpha_genstat_2)
+kruskal_PD_genstat_2 <- kruskal.test(PD_genstat_2 ~ disease_status, data = metadata_samples_alpha_genstat_2)
+
+
+
+H_chao1_genstat_2 <- kruskal_chao1_genstat_2$statistic
+p_chao1_genstat_2 <- kruskal_chao1_genstat_2$p.value
+
+H_shannon_genstat_2 <- kruskal_shannon_genstat_2$statistic
+p_shannon_genstat_2 <- kruskal_shannon_genstat_2$p.value
+
+H_invsimps_genstat_2 <- kruskal_invsimps_genstat_2$statistic
+p_invsimps_genstat_2 <- kruskal_invsimps_genstat_2$p.value
+
+H_obsv_genstat_2 <- kruskal_obsv_genstat_2$statistic
+p_obsv_genstat_2 <- kruskal_obsv_genstat_2$p.value
+
+H_PD_genstat_2 <- kruskal_PD_genstat_2$statistic
+p_PD_genstat_2 <- kruskal_PD_genstat_2$p.value
+
+
+cat("Kruskal-Wallis test for Chao1 index: H =", round(H_chao1_genstat_2, 3), "p =", round(p_chao1_genstat_2, 3), "\n")
+cat("Kruskal-Wallis test for Shannon index: H =", round(H_shannon_genstat_2, 3), "p =", round(p_shannon_genstat_2, 3), "\n")
+cat("Kruskal-Wallis test for Inverse Simpson index: H =", round(H_invsimps_genstat_2, 3), "p =", round(p_invsimps_genstat_2, 3), "\n")
+cat("Kruskal-Wallis test for Observed Number of Species: H =", round(H_obsv_genstat_2, 3), "p =", round(p_obsv_genstat_2, 3), "\n")
+cat("Kruskal-Wallis test for Faith's Phylogenetic Diversity: H =", round(H_PD_genstat_2, 3), "p =", round(p_PD_genstat_2, 3), "\n")
+
+
+
+dunn_chao1_genstat_2 <- dunn_test_alpha_genstat_2 %>% filter(alpha_div == "Chao1")
+dunn_shannon_genstat_2 <- dunn_test_alpha_genstat_2 %>% filter(alpha_div == "Shannon")
+dunn_invsimps_genstat_2 <- dunn_test_alpha_genstat_2 %>% filter(alpha_div == "InvSimpson")
+dunn_obsv_genstat_2 <- dunn_test_alpha_genstat_2 %>% filter(alpha_div == "Observed")
+dunn_PD_genstat_2 <- dunn_test_alpha_genstat_2 %>% filter(alpha_div == "PD_genstat_2")
+
+
+significant_chao1_genstat_2 <- dunn_chao1_genstat_2 %>% filter(p.adj < 0.05)
+significant_shannon_genstat_2 <- dunn_shannon_genstat_2 %>% filter(p.adj < 0.05)
+significant_invsimps_genstat_2 <- dunn_invsimps_genstat_2 %>% filter(p.adj < 0.05)
+significant_obsv_genstat_2 <- dunn_obsv_genstat_2 %>% filter(p.adj < 0.05)
+significant_PD_genstat_2 <- dunn_PD_genstat_2 %>% filter(p.adj < 0.05)
+
+
+print(significant_chao1_genstat_2)
+print(significant_shannon_genstat_2)
+print(significant_invsimps_genstat_2)
+print(significant_obsv_genstat_2)
+print(significant_PD_genstat_2)
+
+sig_shannon_pairwise_genstat_2 <- as.matrix(significant_shannon_genstat_2)
+sig_invsimps_pairwise_genstat_2 <- as.matrix(significant_invsimps_genstat_2)
+
+
+write.csv(sig_shannon_pairwise_genstat_2, "../Results/sig_shannon_pairwise_genstat_2_table.csv", row.names = FALSE)
+write.csv(sig_invsimps_pairwise_genstat_2, "../Results/sig_invsimps_pairwise_genstat_2_table.csv", row.names = FALSE)
+
+
+alpha_summary_genstat_2 <- metadata_samples_alpha_genstat_2 %>%
+  group_by(disease_status) %>%
+  summarise(
+    Chao1_mean = mean(Chao1, na.rm = TRUE),
+    Chao1_sd = sd(Chao1, na.rm = TRUE),
+    Shannon_mean = mean(Shannon, na.rm = TRUE),
+    Shannon_sd = sd(Shannon, na.rm = TRUE),
+    InvSimps_mean = mean(InvSimpson, na.rm = TRUE),
+    InvSimps_sd = sd(InvSimpson, na.rm = TRUE), 
+    Obsv_mean = mean(Observed, na.rm = TRUE),
+    Obsv_sd = sd(Observed, na.rm = TRUE),
+    PD_mean = mean(PD_genstat_2, na.rm = TRUE),
+    PD_sd = sd(PD_genstat_2, na.rm = TRUE)
+  )
+
+print(alpha_summary_genstat_2)
+
+write.csv(alpha_summary_genstat_2, "../Results/alpha_summary_genstat_2_table.csv", row.names = FALSE)
+
+## beta div
+ps_filt_fixed_rel_2 <- tax_transform(ps_filt_fixed_pruned_2, trans = "compositional")
+
+meta_beta_genstat_2 <- as.data.frame(as.matrix(sample_data(ps_filt_fixed_rel_2)))
+
+PCoA_ASV_bray_genstat_2 <- ordinate(ps_filt_fixed_rel_2, distance = "bray", method = "PCoA")
+PCoA_ASV_bray_genstat_2
+
+
+beta_ASV_bray_genstat_2 <- phyloseq::distance(ps_filt_fixed_rel_2, "bray")
+ado_bray_genstat_2 <- adonis2(beta_ASV_bray_genstat_2 ~ disease_status, meta_beta_genstat_2)
+print(ado_bray_genstat_2)
+
+genstat_bc.bd_2 <- betadisper(d = beta_ASV_bray_genstat_2, group = meta_beta_genstat_2$disease_status, type="centroid")
+bd_bc_genstat_boxplot_2 <- boxplot(genstat_bc.bd_2)
+
+bd_bc_genstat_boxplot_2
+
+png("../Results/bd_genstat_bc_boxplot_2.png", width = 3500, height = 2000, res = 300)  
+boxplot(genstat_bc.bd_2, main = "Beta Dispersion per Disease Status (BC) BP2", cex.axis = 1.2, cex.lab = 1.5)
+dev.off()
+
+permutest(genstat_bc.bd_2)
+
+BC_genstat_pcoa_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_bray_genstat_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = disease_status,  fill = disease_status))+
+  geom_point(size = 3, shape = 21, aes(fill = disease_status))+
+  stat_mean(aes(fill = disease_status), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_bray_genstat_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_bray_genstat_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Disease Status")+
+  scale_color_nejm(name = "Disease Status")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/BC_genstat_pcoa_plot_2.png", BC_genstat_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+BC_genstat_pcoa_plot_2
+
+bd_bc_genstat_df_2 <- data.frame(samples = rownames(genstat_bc.bd_2$vectors),
+                                   distances = genstat_bc.bd_2$distances,
+                                   group = meta_beta_genstat_2$disease_status)
+
+kruskal_bc_test_genstat_2 <- bd_bc_genstat_df_2 %>% rstatix::kruskal_test(distances ~ group)
+print(kruskal_bc_test_genstat_2)
+
+
+dunn_bc_test_genstat_2 <- bd_bc_genstat_df_2 %>% rstatix::dunn_test(distances ~ group, p.adjust.method = "BH")
+print(dunn_bc_test_genstat_2)
+
+dunn_bc_test_genstat_table_2 <- apply(dunn_bc_test_genstat_2,2,as.character)
+write.csv(dunn_bc_test_genstat_table_2, "../Results/dunn_bc_test_genstat_table_2.csv", row.names = FALSE)
+
+
+dunn_bc_pvalues_genstat_2 <- dunn_bc_test_genstat_2 %>% select(group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj) %>%
+  column_to_rownames(var = "group1")
+
+
+dunn_bc_matrix_genstat_2 <- as.matrix(dunn_bc_pvalues_genstat_2)
+
+dunn_bc_matrix_genstat_2[lower.tri(dunn_bc_matrix_genstat_2)] <- t(dunn_bc_matrix_genstat_2)[lower.tri(dunn_bc_matrix_genstat_2)]
+
+
+
+dunn_bc_labels_genstat_2 <- multcompLetters(dunn_bc_matrix_genstat_2)$Letters
+print(dunn_bc_labels_genstat_2)
+
+## using weighted unifrac
+
+PCoA_ASV_wu_genstat_2 <- ordinate(ps_filt_fixed_rel_2, distance = "wunifrac", method = "PCoA")
+PCoA_ASV_wu_genstat_2
+
+
+beta_ASV_wu_genstat_2 <- phyloseq::distance(ps_filt_fixed_rel_2, "wunifrac")
+ado_wu_genstat_2 <- adonis2(beta_ASV_wu_genstat_2 ~ disease_status, meta_beta_genstat_2)
+print(ado_wu_genstat_2)
+
+genstat_wu.bd_2 <- betadisper(d = beta_ASV_wu_genstat_2, group = meta_beta_genstat_2$disease_status, type="centroid")
+bd_wu_genstat_boxplot_2 <- boxplot(genstat_wu.bd_2)
+
+bd_wu_genstat_boxplot_2
+
+png("../Results/bd_genstat_wu_boxplot_2.png", width = 3500, height = 2000, res = 300)  
+boxplot(genstat_wu.bd_2, main = "Beta Dispersion per Disease Status (BC) BP2", cex.axis = 1.2, cex.lab = 1.5)
+dev.off()
+
+permutest(genstat_wu.bd_2)
+
+WU_genstat_pcoa_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_wu_genstat_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = disease_status,  fill = disease_status))+
+  geom_point(size = 3, shape = 21, aes(fill = disease_status))+
+  stat_mean(aes(fill = disease_status), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_wu_genstat_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_wu_genstat_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Disease Status")+
+  scale_color_nejm(name = "Disease Status")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_genstat_pcoa_plot_2.png", WU_genstat_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+WU_genstat_pcoa_plot_2
+
+
+ado_wu_sex_genstat_2 <- adonis2(beta_ASV_wu_genstat_2 ~ host_sex, meta_beta_genstat_2)
+print(ado_wu_sex_genstat_2)
+
+WU_genstat_sex_pcoa_plot_2 <- plot_ordination(ps_filt_fixed_rel_2, PCoA_ASV_wu_genstat_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = host_sex,  fill = host_sex))+
+  geom_point(size = 3, shape = 21, aes(fill = host_sex))+
+  stat_mean(aes(fill = host_sex), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_wu_sex_genstat_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_wu_sex_genstat_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Host Sex")+
+  scale_color_nejm(name = "Host Sex")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_genstat_sex_pcoa_plot_2.png", WU_genstat_sex_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+WU_genstat_sex_pcoa_plot_2
+
+bd_wu_genstat_df_2 <- data.frame(samples = rownames(genstat_wu.bd_2$vectors),
+                                   distances = genstat_wu.bd_2$distances,
+                                   group = meta_beta_genstat_2$disease_status)
+
+kruskal_wu_test_genstat_2 <- bd_wu_genstat_df_2 %>% rstatix::kruskal_test(distances ~ group)
+print(kruskal_wu_test_genstat_2)
+
+
+dunn_wu_test_genstat_2 <- bd_wu_genstat_df_2 %>% rstatix::dunn_test(distances ~ group, p.adjust.method = "BH")
+print(dunn_wu_test_genstat_2)
+
+dunn_wu_test_genstat_table_2 <- apply(dunn_wu_test_genstat_2,2,as.character)
+write.csv(dunn_wu_test_genstat_table_2, "../Results/dunn_wu_test_genstat_table_2.csv", row.names = FALSE)
+
+
+dunn_wu_pvalues_genstat_2 <- dunn_wu_test_genstat_2 %>% select(group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj) %>%
+  column_to_rownames(var = "group1")
+
+
+dunn_wu_matrix_genstat_2 <- as.matrix(dunn_wu_pvalues_genstat_2)
+
+dunn_wu_matrix_genstat_2[lower.tri(dunn_wu_matrix_genstat_2)] <- t(dunn_wu_matrix_genstat_2)[lower.tri(dunn_wu_matrix_genstat_2)]
+
+
+
+dunn_wu_labels_genstat_2 <- multcompLetters(dunn_wu_matrix_genstat_2)$Letters
+print(dunn_wu_labels_genstat_2)
+
+
+```
+
+
+
+## Not necessary to do it for baseline samples, they are all "remission"
+
+```{r}
+## wu pcoa sex plot base
+ps_ff_rel_base_2 <- ps_filt_fixed_rel_2 %>% ps_filter(!is.na(baseline_status))
+
+meta_beta_base_1 <- as.data.frame(as.matrix(sample_data(ps_ff_rel_base_2)))
+
+PCoA_ASV_wu_base_2 <- ordinate(ps_ff_rel_base_2, distance = "wunifrac", method = "PCoA")
+PCoA_ASV_wu_base_2
+
+beta_ASV_wu_base_2 <- phyloseq::distance(ps_ff_rel_base_2, "wunifrac")
+
+ado_wu_base_sex_2 <- adonis2(beta_ASV_wu_base_2 ~ host_sex, meta_beta_base_1)
+print(ado_wu_base_sex_2)
+
+WU_base_sex_pcoa_plot_2 <- plot_ordination(ps_ff_rel_base_2, PCoA_ASV_wu_base_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = host_sex,  fill = host_sex))+
+  geom_point(size = 3, shape = 21, aes(fill = host_sex))+
+  stat_mean(aes(fill = host_sex), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_wu_base_sex_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_wu_base_sex_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Host Sex")+
+  scale_color_nejm(name = "Host Sex")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_base_sex_pcoa_plot_2.png", WU_base_sex_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+WU_base_sex_pcoa_plot_2
+
+
+## For end samples by status
+
+ps_filt_fixed_end_2 <- ps_filt_fixed_pruned_2 %>% ps_filter(!is.na(disease_status_end))
+
+ps_filt_fixed_end_2 <- ps_filt_fixed_end_2 %>% ps_mutate(disease_status_end = as.factor(disease_status_end))
+
+meta_end_2 <- as.matrix(sample_data(ps_filt_fixed_end_2))
+
+alpha_div_end_2 <- estimate_richness(ps_filt_fixed_end_2, measures = c("Observed", "Shannon", "InvSimpson", "Chao1"))
+PD_end_2 <- calculatePD(ps_filt_fixed_end_2, justDF = TRUE, include_root = FALSE) %>% pull(PD)
+alpha_div_end_2 <- alpha_div_end_2 %>% mutate(PD = PD_end_2)
+rownames(alpha_div_end_2) <- gsub("^X", "", rownames(alpha_div_end_2))
+head(alpha_div_end_2, n=20)
+
+metadata_samples_alpha_end_2 <- bind_cols(meta_end_2, alpha_div_end_2)
+metadata_samples_long_end_2 <- metadata_samples_alpha_end_2 %>% pivot_longer(cols= Observed:PD, names_to = "alpha_div_end", values_to = "value")
+kruskal_test_alpha_end_2 <- metadata_samples_long_end_2 %>% group_by(alpha_div_end) %>%
+  rstatix::kruskal_test(value ~ disease_status_end) %>% mutate(p_adj_BH = p.adjust(p, method = "BH"))
+
+kruskal_test_alpha_end_2
+write.csv(kruskal_test_alpha_end_2, "../Results/kruskal_test_alpha_end_2.csv", row.names = FALSE)
+
+dunn_test_alpha_end_2 <- metadata_samples_long_end_2 %>% group_by(alpha_div_end) %>%
+  rstatix::dunn_test(value ~ disease_status_end, p.adjust.method = "BH") %>%
+  add_xy_position(x = "disease_status_end", fun = "mean_sd", step.increase = 0.05, scales = "free")
+dunn_test_alpha_end_2 %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12)
+
+dunn_test_alpha_end_table_2 <- apply(dunn_test_alpha_end_2,2,as.character)
+write.csv(dunn_test_alpha_end_table_2, "../Results/dunn_test_alpha_end_table_2.csv", row.names = FALSE)
+
+
+dunn_test_alpha_end_plot_2 <- ggplot(metadata_samples_long_end_2, aes(x = disease_status_end, y = value)) +
+  geom_boxplot() +
+  geom_jitter(shape = 21, color = "black", size = 2, aes(fill = disease_status_end)) +
+  facet_wrap(~alpha_div_end, scales = "free", ncol = 3) +
+  scale_fill_nejm() +
+  stat_pvalue_manual(data = dunn_test_alpha_end_2, 
+                     label = "p.adj.signif", tip.length = 0.01, bracket.shorten = 0.05,
+                     hide.ns = TRUE, size = 4) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 10), legend.position = "none")
+
+ggsave("../Results/dunn_test_alpha_end_plot_2.png", dunn_test_alpha_end_plot_2, width = 13, height = 8, dpi = 300)
+
+dunn_test_alpha_end_plot_2
+
+
+metadata_samples_alpha_end_2
+
+kruskal_chao1_end_2 <- kruskal.test(Chao1 ~ disease_status_end, data = metadata_samples_alpha_end_2)
+kruskal_shannon_end_2 <- kruskal.test(Shannon ~ disease_status_end, data = metadata_samples_alpha_end_2)
+kruskal_invsimps_end_2 <- kruskal.test(InvSimpson ~ disease_status_end, data = metadata_samples_alpha_end_2)
+kruskal_obsv_end_2 <- kruskal.test(Observed ~ disease_status_end, data = metadata_samples_alpha_end_2)
+kruskal_pd_end_2 <- kruskal.test(PD_end_2 ~ disease_status_end, data = metadata_samples_alpha_end_2)
+
+
+
+H_chao1_end_2 <- kruskal_chao1_end_2$statistic
+p_chao1_end_2 <- kruskal_chao1_end_2$p.value
+
+H_shannon_end_2 <- kruskal_shannon_end_2$statistic
+p_shannon_end_2 <- kruskal_shannon_end_2$p.value
+
+H_invsimps_end_2 <- kruskal_invsimps_end_2$statistic
+p_invsimps_end_2 <- kruskal_invsimps_end_2$p.value
+
+H_obsv_end_2 <- kruskal_obsv_end_2$statistic
+p_obsv_end_2 <- kruskal_obsv_end_2$p.value
+
+H_pd_end_2 <- kruskal_pd_end_2$statistic
+p_pd_end_2 <- kruskal_pd_end_2$p.value
+
+
+cat("Kruskal-Wallis test for Chao1 index: H =", round(H_chao1_end_2, 3), "p =", round(p_chao1_end_2, 3), "\n")
+cat("Kruskal-Wallis test for Shannon index: H =", round(H_shannon_end_2, 3), "p =", round(p_shannon_end_2, 3), "\n")
+cat("Kruskal-Wallis test for Inverse Simpson index: H =", round(H_invsimps_end_2, 3), "p =", round(p_invsimps_end_2, 3), "\n")
+cat("Kruskal-Wallis test for Observed Number of Species: H =", round(H_obsv_end_2, 3), "p =", round(p_obsv_end_2, 3), "\n")
+cat("Kruskal-Wallis test for Faith's Phylogenetic Diversity: H =", round(H_pd_end_2, 3), "p =", round(p_pd_end_2, 3), "\n")
+
+
+
+dunn_chao1_end_2 <- dunn_test_alpha_end_2 %>% filter(alpha_div_end == "Chao1")
+dunn_shannon_end_2 <- dunn_test_alpha_end_2 %>% filter(alpha_div_end == "Shannon")
+dunn_invsimps_end_2 <- dunn_test_alpha_end_2 %>% filter(alpha_div_end == "InvSimpson")
+dunn_obsv_end_2 <- dunn_test_alpha_end_2 %>% filter(alpha_div_end == "Observed")
+dunn_pd_end_2 <- dunn_test_alpha_end_2 %>% filter(alpha_div_end == "PD_end_2")
+
+
+significant_chao1_end_2 <- dunn_chao1_end_2 %>% filter(p.adj < 0.05)
+significant_shannon_end_2 <- dunn_shannon_end_2 %>% filter(p.adj < 0.05)
+significant_invsimps_end_2 <- dunn_invsimps_end_2 %>% filter(p.adj < 0.05)
+significant_obsv_end_2 <- dunn_obsv_end_2 %>% filter(p.adj < 0.05)
+significant_pd_end_2 <- dunn_pd_end_2 %>% filter(p.adj < 0.05)
+
+
+print(significant_chao1_end_2)
+print(significant_shannon_end_2)
+print(significant_invsimps_end_2)
+print(significant_obsv_end_2)
+print(significant_pd_end_2)
+
+sig_shannon_pairwise_end_2 <- as.matrix(significant_shannon_end_2)
+sig_invsimps_pairwise_end_2 <- as.matrix(significant_invsimps_end_2)
+
+
+write.csv(sig_shannon_pairwise_end_2, "../Results/sig_shannon_pairwise_end_2_table.csv", row.names = FALSE)
+write.csv(sig_invsimps_pairwise_end_2, "../Results/sig_invsimps_pairwise_end_2_table.csv", row.names = FALSE)
+
+
+alpha_summary_end_2 <- metadata_samples_alpha_end_2 %>%
+  group_by(disease_status_end) %>%
+  summarise(
+    Chao1_mean = mean(Chao1, na.rm = TRUE),
+    Chao1_sd = sd(Chao1, na.rm = TRUE),
+    Shannon_mean = mean(Shannon, na.rm = TRUE),
+    Shannon_sd = sd(Shannon, na.rm = TRUE),
+    InvSimps_mean = mean(InvSimpson, na.rm = TRUE),
+    InvSimps_sd = sd(InvSimpson, na.rm = TRUE), 
+    Obsv_mean = mean(Observed, na.rm = TRUE),
+    Obsv_sd = sd(Observed, na.rm = TRUE),
+    PD_mean = mean(PD_end_2, na.rm = TRUE),
+    PD_sd = sd(PD_end_2, na.rm = TRUE)
+  )
+
+print(alpha_summary_end_2)
+
+write.csv(alpha_summary_end_2, "../Results/alpha_summary_end_2_table.csv", row.names = FALSE)
+
+## beta div
+ps_ff_rel_endstatus_2 <- ps_filt_fixed_rel_2 %>% ps_filter(!is.na(disease_status_end))
+
+meta_beta_endstatus_2 <- as.data.frame(as.matrix(sample_data(ps_ff_rel_endstatus_2)))
+
+PCoA_ASV_bray_endstatus_2 <- ordinate(ps_ff_rel_endstatus_2, distance = "bray", method = "PCoA")
+PCoA_ASV_bray_endstatus_2
+
+
+beta_ASV_bray_endstatus_2 <- phyloseq::distance(ps_ff_rel_endstatus_2, "bray")
+ado_bray_statusend_2 <- adonis2(beta_ASV_bray_endstatus_2 ~ disease_status_end, meta_beta_endstatus_2)
+print(ado_bray_statusend_2)
+
+end_bc.bd_2 <- betadisper(d = beta_ASV_bray_endstatus_2, group = meta_beta_endstatus_2$disease_status_end, type="centroid")
+bd_bc_endstatus_boxplot_2 <- boxplot(end_bc.bd_2)
+
+bd_bc_endstatus_boxplot_2
+
+png("../Results/bd_endstat_bc_boxplot_2.png", width = 3500, height = 2000, res = 300)  
+boxplot(end_bc.bd_2, main = "Beta Dispersion per End Status (BC) BP1", cex.axis = 1.2, cex.lab = 1.5)
+dev.off()
+
+permutest(end_bc.bd_2)
+
+BC_endstatus_pcoa_plot_2 <- plot_ordination(ps_ff_rel_endstatus_2, PCoA_ASV_bray_endstatus_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = disease_status_end,  fill = disease_status_end))+
+  geom_point(size = 3, shape = 21, aes(fill = disease_status_end))+
+  stat_mean(aes(fill = disease_status_end), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_bray_statusend_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_bray_statusend_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "End Status")+
+  scale_color_nejm(name = "End Status")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/BC_endstatus_pcoa_plot_2.png", BC_endstatus_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+BC_endstatus_pcoa_plot_2
+
+bd_bc_endstatus_df_2 <- data.frame(samples = rownames(end_bc.bd_2$vectors),
+                                   distances = end_bc.bd_2$distances,
+                                   group = meta_beta_endstatus_2$disease_status_end)
+
+kruskal_bc_test_endstatus_2 <- bd_bc_endstatus_df_2 %>% rstatix::kruskal_test(distances ~ group)
+print(kruskal_bc_test_endstatus_2)
+
+
+dunn_bc_test_endstatus_2 <- bd_bc_endstatus_df_2 %>% rstatix::dunn_test(distances ~ group, p.adjust.method = "BH")
+print(dunn_bc_test_endstatus_2)
+
+dunn_bc_test_endstatustable_2 <- apply(dunn_bc_test_endstatus_2,2,as.character)
+write.csv(dunn_bc_test_endstatustable_2, "../Results/dunn_bc_test_endstatustable_2.csv", row.names = FALSE)
+
+
+dunn_bc_pvalues_endstatus_2 <- dunn_bc_test_endstatus_2 %>% select(group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj) %>%
+  column_to_rownames(var = "group1")
+
+
+dunn_bc_matrix_endstatus_2 <- as.matrix(dunn_bc_pvalues_endstatus_2)
+
+dunn_bc_matrix_endstatus_2[lower.tri(dunn_bc_matrix_endstatus_2)] <- t(dunn_bc_matrix_endstatus_2)[lower.tri(dunn_bc_matrix_endstatus_2)]
+
+
+
+dunn_bc_labels_endstatus_2 <- multcompLetters(dunn_bc_matrix_endstatus_2)$Letters
+print(dunn_bc_labels_endstatus_2)
+
+## using weighted unifrac
+
+PCoA_ASV_wu_endstatus_2 <- ordinate(ps_ff_rel_endstatus_2, distance = "wunifrac", method = "PCoA")
+PCoA_ASV_wu_endstatus_2
+
+
+beta_ASV_wu_endstatus_2 <- phyloseq::distance(ps_ff_rel_endstatus_2, "wunifrac")
+ado_wu_statusend_2 <- adonis2(beta_ASV_wu_endstatus_2 ~ disease_status_end, meta_beta_endstatus_2)
+print(ado_wu_statusend_2)
+
+end_wu.bd_2 <- betadisper(d = beta_ASV_wu_endstatus_2, group = meta_beta_endstatus_2$disease_status_end, type="centroid")
+bd_wu_endstatus_boxplot_2 <- boxplot(end_wu.bd_2)
+
+bd_wu_endstatus_boxplot_2
+
+png("../Results/bd_endstat_wu_boxplot_2.png", width = 3500, height = 2000, res = 300)  
+boxplot(end_wu.bd_2, main = "Beta Dispersion per End Status (BC) BP1", cex.axis = 1.2, cex.lab = 1.5)
+dev.off()
+
+permutest(end_wu.bd_2)
+
+WU_endstatus_pcoa_plot_2 <- plot_ordination(ps_ff_rel_endstatus_2, PCoA_ASV_wu_endstatus_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = disease_status_end,  fill = disease_status_end))+
+  geom_point(size = 3, shape = 21, aes(fill = disease_status_end))+
+  stat_mean(aes(fill = disease_status_end), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_wu_statusend_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_wu_statusend_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "End Status")+
+  scale_color_nejm(name = "End Status")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_endstatus_pcoa_plot_2.png", WU_endstatus_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+WU_endstatus_pcoa_plot_2
+
+
+ado_wu_sex_end_2 <- adonis2(beta_ASV_wu_endstatus_2 ~ host_sex, meta_beta_endstatus_2)
+print(ado_wu_sex_end_2)
+
+WU_end_sex_pcoa_plot_2 <- plot_ordination(ps_ff_rel_endstatus_2, PCoA_ASV_wu_endstatus_2, axes = c(1,2))+
+  stat_conf_ellipse(geom = "polygon", alpha = 0.1, aes(color = host_sex,  fill = host_sex))+
+  geom_point(size = 3, shape = 21, aes(fill = host_sex))+
+  stat_mean(aes(fill = host_sex), shape = 23, size = 4) + 
+  annotate("text", x =- 0.3, y = 0.5, color = "black", label = paste0("p=", round(ado_wu_sex_end_2$`Pr(>F)`[1], digits = 3)))+
+  annotate("text", x = -0.3, y = 0.45, color = "black", label = paste0("R\u00b2=", round((ado_wu_sex_end_2$R2[1])*100, digits = 2), "%"))+
+  scale_fill_nejm(name = "Host Sex")+
+  scale_color_nejm(name = "Host Sex")+
+  theme_bw()+
+  theme(legend.position = "right")
+
+ggsave("../Results/WU_end_sex_pcoa_plot_2.png", WU_end_sex_pcoa_plot_2, width = 10, height = 8, dpi = 300)
+
+WU_end_sex_pcoa_plot_2
+
+bd_wu_endstatus_df_2 <- data.frame(samples = rownames(end_wu.bd_2$vectors),
+                                   distances = end_wu.bd_2$distances,
+                                   group = meta_beta_endstatus_2$disease_status_end)
+
+kruskal_wu_test_endstatus_2 <- bd_wu_endstatus_df_2 %>% rstatix::kruskal_test(distances ~ group)
+print(kruskal_wu_test_endstatus_2)
+
+
+dunn_wu_test_endstatus_2 <- bd_wu_endstatus_df_2 %>% rstatix::dunn_test(distances ~ group, p.adjust.method = "BH")
+print(dunn_wu_test_endstatus_2)
+
+dunn_wu_test_endstatustable_2 <- apply(dunn_wu_test_endstatus_2,2,as.character)
+write.csv(dunn_wu_test_endstatustable_2, "../Results/dunn_wu_test_endstatustable_2.csv", row.names = FALSE)
+
+
+dunn_wu_pvalues_endstatus_2 <- dunn_wu_test_endstatus_2 %>% select(group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj) %>%
+  column_to_rownames(var = "group1")
+
+
+dunn_wu_matrix_endstatus_2 <- as.matrix(dunn_wu_pvalues_endstatus_2)
+
+dunn_wu_matrix_endstatus_2[lower.tri(dunn_wu_matrix_endstatus_2)] <- t(dunn_wu_matrix_endstatus_2)[lower.tri(dunn_wu_matrix_endstatus_2)]
+
+
+
+dunn_wu_labels_endstatus_2 <- multcompLetters(dunn_wu_matrix_endstatus_2)$Letters
+print(dunn_wu_labels_endstatus_2)
+
+
+```
+
+
+## Check prevalence of taxa
+```{r}
+
+print(ps_filt_fixed_pruned_2)
+
+ps_filt_fixed_prev_2 <- tax_filter(ps_filt_fixed_pruned_2,
+  min_prevalence = 0.01)
+  
+print(ps_filt_fixed_prev_2)
+
+
+prev_thresholds_2 <- c(0.05, 0.01, 0.001)
+
+prev_filt_results_2 <- data.frame(min_prevalence = prev_thresholds_2, num_taxa_retained = NA, perc_taxa_removed = NA)
+
+total_taxa_2 <- nrow(tax_table(ps_filt_fixed_pruned_2))
+
+for (i in seq_along(prev_thresholds_2)) {
+  ps_filt_fixed_samples_prev_all_2 <- ps_filt_fixed_pruned_2 %>%
+    tax_filter(min_prevalence = prev_thresholds_2[i])
+  
+  num_taxa_retained <- nrow(tax_table(ps_filt_fixed_samples_prev_all_2))
+  perc_taxa_removed <- 100 * (total_taxa_2 - num_taxa_retained) / total_taxa_2
+  
+  prev_filt_results_2$num_taxa_retained[i] <- num_taxa_retained
+  prev_filt_results_2$perc_taxa_removed[i] <- perc_taxa_removed
+}
+
+print(prev_filt_results_2)
+
+```
+
+```{r}
+
+ps_filt_fixed_genus_rel_2 <- tax_transform(ps_filt_fixed_genus_2, trans = "compositional")
+input_sample_metadata_2 <- ps_filt_fixed_genus_rel_2 %>% meta
+input_sample_metadata_2 <- input_sample_metadata_2 %>% mutate(host_sex = as.factor(host_sex))
+
+input_data_genus_Maaslin_2 <- as.data.frame(otu_table(ps_filt_fixed_genus_rel_2))
+
+input_data_genus_Maaslin_2 <- input_data_genus_Maaslin_2[sapply(input_data_genus_Maaslin_2, is.numeric)]
+
+output_directory_genus_2 <- "../Results/Maaslin2_output_genus_2"
+
+fit_data_genus_2 <- Maaslin2::Maaslin2(
+    input_data = input_data_genus_Maaslin_2,
+    input_metadata = input_sample_metadata_2,
+    output = output_directory_genus_2,
+    analysis_method = "LM",
+    fixed_effects = c("group", "host_sex", "host_age"),
+    random_effects = "host_subject_id",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0.01,
+    reference = "group,remission-remission")
+
+```
+
+```{r}
+
+head(fit_data_genus_2$results, n=20) %>% kbl() %>%
+  kableExtra::kable_paper(font_size = 12) %>%
+  scroll_box(width = "1000px", height = "500px")
+
+```
+
+
+```{r}
+taxa_abund_kw_2 <- as.data.frame(otu_table(ps_filt_fixed_genus_2))
+
+# Convert row names to a column (sample IDs)
+taxa_abund_kw_2 <- taxa_abund_kw_2 %>% 
+  tibble::rownames_to_column(var = "samples")
+
+# Convert sample_data from phyloseq object to a proper data frame
+metadata_samples_kw_2 <- as(sample_data(ps_filt_fixed_genus_2), "data.frame") %>% 
+  tibble::rownames_to_column(var = "samples") # Ensure sample IDs are a column
+
+metadata_samples_kw_2 <- metadata_samples_kw_2 %>% 
+  select(c(samples, group))
+
+
+# Merge metadata with abundance data
+taxa_data_kw_2 <- left_join(metadata_samples_kw_2, taxa_abund_kw_2, by = "samples") 
+
+taxa_data_kw_tib_2 <- taxa_data_kw_2 %>%
+  as_tibble()  # Convert to tibble for tidyverse functions
+
+# Function to perform Kruskal-Wallis test on each taxon
+kruskal_test_results_2 <- taxa_data_kw_tib_2 %>%
+  pivot_longer(cols = -c(samples, group), names_to = "taxon", values_to = "abundance") %>%
+  group_by(taxon) %>%
+  rstatix::kruskal_test(abundance ~ group) %>%
+  rstatix::adjust_pvalue(method = "BH") %>%  # Adjust for multiple testing (Benjamini-Hochberg)
+  arrange(p.adj)
+
+# View significant results (p.adj < 0.05)
+significant_taxa_kw_2 <- kruskal_test_results_2 %>% filter(p.adj < 0.05)
+
+# Display top results
+significant_taxa_kw_2 %>% 
+  arrange(p.adj) %>% 
+  head(n=20)
+
+top_10_sig_taxa_2 <- significant_taxa_kw_2 %>% arrange(p.adj) %>% head(n=10)
+
+top_10_sig_taxa_2
+
+```
+
+```{r}
+top10_sig_taxa_names_2 <- top_10_sig_taxa_2$taxon
+
+ps_ff_genus_melt_2 <- ps_filt_fixed_genus_rel_2 %>% psmelt()
+
+ps_traj_taxa_filt_2 <- ps_ff_genus_melt_2 %>% filter(OTU %in% top10_sig_taxa_names_2)
+
+plot_subject_trajectory <- function(df, group_name) {
+  
+  df_filt <- df %>% filter(group == group_name)
+  
+  ggplot(df_filt, aes(x = week, y = Abundance, group = OTU, color = OTU)) +
+    geom_line(aes(linetype = OTU), size = 1) + # Line style per taxa
+    geom_point(size = 3) + 
+    scale_color_manual(values = distinct_palette(10, pal = "brewerPlus"))
+  
+  
+}
+
+plots_remrem_2 <- plot_subject_trajectory(ps_traj_taxa_filt_2, "remission-remission")
+
+plots_remac_2 <- plot_subject_trajectory(ps_traj_taxa_filt_2, "remission-active")
+
+wr_remrem_lineplots_2 <- wrap_plots(plots_remrem_2) + plot_layout(guides = "collect") &
+  facet_wrap("host_subject_id", scales = "free_x") &
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10),
+        axis.ticks.y = element_blank(), legend.title = element_blank(),
+        legend.position = "bottom", strip.text = element_text(size = 12),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 14))
+wr_remac_lineplots_2 <- wrap_plots(plots_remac_2) + plot_layout(guides = "collect") &
+  facet_wrap("host_subject_id", scales = "free_x") &
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10),
+        axis.ticks.y = element_blank(), legend.title = element_blank(),
+        legend.position = "bottom", strip.text = element_text(size = 12),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 14))
+
+ggsave(filename = "wr_remrem_lineplots_2.png", plot = wr_remrem_lineplots_2, path = "../Results/",
+       width = 14, height = 11, dpi = 320)
+
+ggsave(filename = "wr_remac_lineplots_2.png", plot = wr_remac_lineplots_2, path = "../Results/",
+       width = 14, height = 11, dpi = 320)
+
+
+wr_remrem_lineplots_2
+wr_remac_lineplots_2
+
+```

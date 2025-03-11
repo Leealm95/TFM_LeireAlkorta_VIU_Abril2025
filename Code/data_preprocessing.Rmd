@@ -1,0 +1,392 @@
+---
+title: "data_preprocessing"
+author: "Leire A. Murua"
+date: "2025-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First, we'll denoise the data gathered beforehand through CLI tools. It has already been quality checked and trimmed to eliminate adapters and bases of low quality (Phred < 20). 
+Each step will be repeated thrice (once per bioproject), until they are ready to be gathered into one big dataset and the sequences clustered into ASVs. 
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+```
+
+```{r}
+library(dada2); packageVersion("dada2")
+```
+## PRJNA737472
+
+The first bioproject to be denoised will be PRJNA737472 (referred to as 737472 in filenames).
+Working directory has been set to the "Pipeline" folder where all files and folders for this project are saved.
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+path_trimmed_737472 <- "./Data/Processed/2_Trimming/paired_trim_737472"
+
+fnFs_737472 <- sort(list.files(path_trimmed_737472, pattern="_1_val_1.fq.gz", full.names=TRUE))
+fnRs_737472 <- sort(list.files(path_trimmed_737472, pattern="_2_val_2.fq.gz", full.names = TRUE))
+
+sample.names_737472 <- sapply(strsplit(basename(fnFs_737472), "_"), `[`, 1)
+sample.names_737472
+```
+
+
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+getwd()
+
+filtFs_737472 <- file.path("Data", "Processed", "4_Denoising", "filt_737472", paste0(sample.names_737472, "_F_filt.fastq.gz"))
+filtRs_737472 <- file.path("Data", "Processed", "4_Denoising",  "filt_737472", paste0(sample.names_737472, "_R_filt.fastq.gz"))
+names(filtFs_737472) <- sample.names_737472
+names(filtRs_737472) <- sample.names_737472
+
+```
+
+After creating the subdirectory for the filtered files, we'll actually filter them.
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+getwd()
+
+out_737472 <- filterAndTrim(fnFs_737472, filtFs_737472, fnRs_737472, filtRs_737472, truncLen=c(150,150),
+              maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+              compress=TRUE, multithread=TRUE)
+
+head(out_737472)
+
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+errF_737472 <- learnErrors(filtFs_737472, multithread=TRUE)
+errR_737472 <- learnErrors(filtRs_737472, multithread=TRUE)
+plotErrors(errF_737472, nominalQ=TRUE)
+
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+dadaFs_737472 <- dada(filtFs_737472, err=errF_737472, multithread=TRUE)
+
+dadaRs_737472 <- dada(filtRs_737472, err=errR_737472, multithread=TRUE)
+
+mergers_737472 <- mergePairs(dadaFs_737472, filtFs_737472, dadaRs_737472, filtRs_737472, verbose=TRUE)
+# Inspect the merger data.frame from the first sample
+head(mergers_737472[[1]])
+
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+missing_filtFs <- filtFs_737472[!file.exists(filtFs_737472)]
+missing_filtRs <- filtRs_737472[!file.exists(filtRs_737472)]
+
+if (length(missing_filtFs) > 0) {
+  cat("Missing forward read files:\n", missing_filtFs, "\n")
+}
+
+if (length(missing_filtRs) > 0) {
+  cat("Missing reverse read files:\n", missing_filtRs, "\n")
+}
+
+```
+
+```{r} 
+library(parallel); packageVersion("parallel")
+library(dada2)
+
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+# Number of batches
+n_batches <- 10
+batches_737472 <- split(seq_along(filtFs_737472), ceiling(seq_along(filtFs_737472)/n_batches))
+
+# Function to process each batch
+process_batch_737472 <- function(batch_indices) {
+  dadaFs_737472 <- dada(filtFs_737472[batch_indices], err = errF_737472, multithread = TRUE)
+  dadaRs_737472 <- dada(filtRs_737472[batch_indices], err = errR_737472, multithread = TRUE)
+  mergers_737472 <- mergePairs(dadaFs_737472, filtFs_737472[batch_indices], dadaRs_737472, filtRs_737472 [batch_indices], verbose = TRUE)
+  return(mergers_737472)
+}
+
+# Create cluster
+cl_737472 <- makeCluster(detectCores() - 2)
+
+# Load necessary libraries on worker nodes
+clusterEvalQ(cl_737472, library(dada2))
+
+# Export necessary objects to worker nodes
+clusterExport(cl_737472, c("filtFs_737472", "filtRs_737472", "errF_737472", "errR_737472", "process_batch_737472"))
+
+# Run parallel processing
+results_737472 <- parLapply(cl_737472, batches_737472, process_batch_737472)
+
+# Stop the cluster
+stopCluster(cl_737472)
+
+# Combine results if needed
+results_combined_737472 <- do.call(c, results_737472)
+results_combined_737472[[1]]
+
+saveRDS(results_combined_737472, file = "results_combined_737472.rds")
+
+# results_combined_737472 <- readRDS("results_combined_737472.rds")
+
+
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+results_combined_737472 <- readRDS("results_combined_737472.rds")
+
+seqtab_737472 <- makeSequenceTable(results_combined_737472)
+dim(seqtab_737472)
+
+table(nchar(getSequences(seqtab_737472)))
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+seqtab.nochim_737472 <- removeBimeraDenovo(seqtab_737472, method="consensus", multithread=TRUE, verbose=TRUE)
+dim(seqtab.nochim_737472)
+
+sum(seqtab.nochim_737472)/sum(seqtab_737472)
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+getN_737472 <- function(x) sum(getUniques(x))
+track_737472 <- cbind(out, sapply(dadaFs_737472, getN_737472), sapply(dadaRs_737472, getN_737472), sapply(results_combined_737472, getN_737472), rowSums(seqtab.nochim_737472))
+
+colnames(track_737472) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track_737472) <- sample.names_737472
+head(track_737472)
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+taxa_7374721 <- assignTaxonomy(seqtab.nochim_737472, refFasta = ref_fasta, multithread = TRUE)
+taxa_7374721 <- addSpecies(taxa_7374721, species_fasta)
+saveRDS(taxa_7374721, "taxa_737472.rds")
+taxa.print_737472 <- taxa_737472 # Removing sequence rownames for display only
+rownames(taxa.print_737472) <- NULL
+head(taxa.print_737472)
+```
+
+
+## PRJNA951422
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+path_trimmed_951422 <- "./Data/Processed/2_Trimming/amp_951422_trim"
+
+fnFs_951422 <- sort(list.files(path_trimmed_951422, pattern="_1_val_1.fq.gz", full.names=TRUE))
+fnRs_951422 <- sort(list.files(path_trimmed_951422, pattern="_2_val_2.fq.gz", full.names = TRUE))
+
+sample.names_951422 <- sapply(strsplit(basename(fnFs_951422), "_"), `[`, 1)
+sample.names_951422
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+getwd()
+
+filtFs_951422 <- file.path("Data", "Processed", "4_Denoising", "filt_951422", paste0(sample.names_951422, "_F_filt.fastq.gz"))
+filtRs_951422 <- file.path("Data", "Processed", "4_Denoising",  "filt_951422", paste0(sample.names_951422, "_R_filt.fastq.gz"))
+names(filtFs_951422) <- sample.names_951422
+names(filtRs_951422) <- sample.names_951422
+
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+getwd()
+
+out_951422 <- filterAndTrim(fnFs_951422, filtFs_951422, fnRs_951422, filtRs_951422, truncLen=c(250,250),
+              maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+              compress=TRUE, multithread=FALSE)
+
+head(out_951422)
+saveRDS(out_951422, "filter_output_951422.rds")
+
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+errF_951422 <- learnErrors(filtFs_951422, multithread=TRUE)
+saveRDS(errF_951422, "error_rates_forward_951422.rds")
+
+errR_951422 <- learnErrors(filtRs_951422, multithread=TRUE)
+saveRDS(errR_951422, "error_rates_reverse_951422.rds")
+
+plotErrors(errF_951422, nominalQ=TRUE)
+
+```
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+missing_filtFs_951422 <- filtFs_951422[!file.exists(filtFs_951422)]
+missing_filtRs_951422 <- filtRs_951422[!file.exists(filtRs_951422)]
+
+if (length(missing_filtFs_951422) > 0) {
+  cat("Missing forward read files:\n", missing_filtFs_951422, "\n")
+}
+
+if (length(missing_filtRs_951422) > 0) {
+  cat("Missing reverse read files:\n", missing_filtRs_951422, "\n")
+}
+
+```
+
+```{r} 
+library(parallel)
+library(dada2)
+
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+# Number of batches
+n_batches <- 10
+batches_951422 <- split(seq_along(filtFs_951422), ceiling(seq_along(filtFs_951422)/n_batches))
+
+# Function to process each batch
+process_batch_951422 <- function(batch_indices) {
+  dadaFs_951422 <- dada(filtFs_951422[batch_indices], err = errF_951422, multithread = TRUE)
+  dadaRs_951422 <- dada(filtRs_951422[batch_indices], err = errR_951422, multithread = TRUE)
+  mergers_951422 <- mergePairs(dadaFs_951422, filtFs_951422[batch_indices], dadaRs_951422, filtRs_951422[batch_indices], verbose = TRUE)
+  return(mergers_951422)
+}
+
+# Create cluster
+cl_951422 <- makeCluster(detectCores() - 2)
+
+# Load necessary libraries on worker nodes
+clusterEvalQ(cl_951422, library(dada2))
+
+# Export necessary objects to worker nodes
+clusterExport(cl_951422, c("filtFs_951422", "filtRs_951422", "errF_951422", "errR_951422", "process_batch_951422"))
+
+# Run parallel processing
+results_951422 <- parLapply(cl_951422, batches_951422, process_batch_951422)
+
+# Stop the cluster
+stopCluster(cl_951422)
+
+# Combine results if needed
+results_combined_951422 <- do.call(c, results_951422)
+
+saveRDS(results_combined_951422, file = "results_combined_951422.rds")
+
+# results_combined_951422 <- readRDS("results_combined_951422.rds")
+
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+seqtab_951422 <- makeSequenceTable(results_combined_951422)
+dim(seqtab_951422)
+
+table(nchar(getSequences(seqtab_951422)))
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+seqtab.nochim_951422 <- removeBimeraDenovo(seqtab_951422, method="consensus", multithread=TRUE, verbose=TRUE)
+dim(seqtab.nochim_951422)
+
+sum(seqtab.nochim_951422)/sum(seqtab_951422)
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+getN_951422 <- function(x) sum(getUniques(x))
+track_951422 <- cbind(out, sapply(dadaFs_951422, getN_951422), sapply(dadaRs_951422, getN_951422), sapply(results_combined_951422, getN_951422), rowSums(seqtab.nochim_951422))
+
+colnames(track_951422) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track_951422) <- sample.names_951422
+head(track_951422)
+```
+
+
+```{r}
+setwd("C:/Users/usuario/Leire/Studies/MasterBioinfo/TFM/Pipeline")
+
+taxa_951422 <- assignTaxonomy(seqtab.nochim_951422, refFasta = ref_fasta, multithread = TRUE)
+taxa_951422 <- addSpecies(taxa_951422, species_fasta)
+saveRDS(taxa_951422, "taxa_951422.rds")
+
+taxa.print_951422 <- taxa_951422 # Removing sequence rownames for display only
+rownames(taxa.print_951422) <- NULL
+head(taxa.print_951422)
+```
+
+
+# COMBINE BOTH BIOPROJECT DATASETS
+
+```{r}
+
+results_combined_737472 <- readRDS("results_combined_737472.rds")
+results_combined_951422 <- readRDS("results_combined_951422.rds")
+
+results_combined <- c(results_combined_737472, results_combined_951422)
+names(results_combined) <- sub("^\\d+\\.", "", names(results_combined))
+names(results_combined)
+saveRDS(results_combined, file = "results_combined.rds")
+
+seqtab_combined <- makeSequenceTable(results_combined)
+
+dim(seqtab_combined)
+
+seqtab_nochim <- readRDS("seqtab_nochim_combined.rds")
+seqtab_nochim <- removeBimeraDenovo(seqtab_combined, method = "consensus", multithread = TRUE)
+rownames(seqtab_nochim) <- sub("^\\d+\\.", "", rownames(seqtab_nochim))
+rownames(seqtab_nochim)
+
+saveRDS(seqtab_nochim, file = "seqtab_nochim_combined.rds")
+
+beep(sound = 2)
+
+```
+
+```{r}
+
+ref_fasta <- "./Data/Ref_database_SILVA/silva_nr99_v138.2_toGenus_trainset.fa.gz"
+species_fasta <- "./Data/Ref_database_SILVA/silva_v138.2_assignSpecies.fa.gz"
+
+taxa_combined <- assignTaxonomy(seqtab_nochim, refFasta = ref_fasta, multithread = TRUE)
+taxa_combined <- addSpecies(taxa_combined, species_fasta)
+
+saveRDS(taxa_combined, file = "taxa_combined.rds")
+
+```
+
+
+

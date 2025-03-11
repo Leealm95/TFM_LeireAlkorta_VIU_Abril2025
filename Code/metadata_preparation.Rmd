@@ -1,0 +1,428 @@
+---
+title: "metadata_preparation"
+author: "Leire A. Murua"
+date: "2025-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+library(tidyverse); packageVersion("tidyverse")
+library(dplyr); packageVersion("dplyr")
+
+library(beepr)
+
+```
+
+## Load metadata files and combine them, modify for the data needed
+## Add factorized column of disease severity according to calprotectin values
+
+```{r}
+metadata_737472 <- read.csv("../Data/Metadata/737472_SraRunTable.csv", row.names = 1)
+metadata_951422 <- read.csv("../Data/Metadata/951422_SraRunTable.csv", row.names = 1)
+
+# View(metadata_737472)
+# names(metadata_737472)
+
+metadata_737472_1 <- metadata_737472 %>% 
+  select(BioProject, Sample.Name, host_is_fmt_recipient, 
+         host_subject_id, collection_days_post_initial_fmt, Host_age,
+         host_assigned_donor_subject_id, host_sex, host_subject_assigned_to_antibiotics_arm,
+         host_subject_assigned_to_maintenance_arm, rrs_library_id..run., AGE, 
+         Library_ID, Patient_ID, sex, Donor) %>% 
+  rename_all(tolower) %>% 
+  mutate(host_subject_id = case_when(
+    patient_id == "DFS.007" ~ "S0007",
+    TRUE ~ host_subject_id
+  )) %>% 
+  unite("ttm_arm", host_subject_assigned_to_antibiotics_arm, 
+        host_subject_assigned_to_maintenance_arm, sep = "/") %>% 
+  mutate(host_assigned_donor_subject_id = case_when(
+    grepl("^D", host_subject_id) ~ "is donor",
+    TRUE ~ host_assigned_donor_subject_id 
+  )) %>% 
+  mutate(ttm_arm = case_when(
+    host_assigned_donor_subject_id == "is donor" ~ "healthy",
+    host_subject_id == "S0007" ~ "ABX-/CAPS",
+    TRUE ~ ttm_arm
+  )) %>%
+  mutate(coll_time = case_when(
+    grepl("^D", host_subject_id) ~ "",
+    grepl("^S", host_subject_id) ~ substr(rrs_library_id..run., start = 9, stop = nchar(rrs_library_id..run.)),)) %>% 
+  select(-rrs_library_id..run., patient_id) %>% 
+  mutate(subject_type = case_when(
+    donor == "yes" ~ "Healthy", 
+    host_is_fmt_recipient == "True" ~ "UC",
+    grepl("^S", host_subject_id) ~ "UC",        # Assign "UC" to samples with host_subject_id starting with "S"
+    grepl("^D", host_subject_id) ~ "Healthy"    # Assign "Healthy" to samples with host_subject_id starting with "D"
+  )) %>% 
+  mutate(disease_status_end = case_when(
+    subject_type == "Healthy" ~ "healthy",
+    host_subject_id == "S0001" ~ "active", 
+    host_subject_id == "S0004" ~ "remission",
+    host_subject_id == "S0007" ~ "active",
+    host_subject_id == "S0008" ~ "remission",
+    host_subject_id == "S0013" ~ "active",
+    host_subject_id == "S0017" ~ "active",
+    host_subject_id == "S0021" ~ "active",
+    host_subject_id == "S0024" ~ "active",
+    host_subject_id == "S0027" ~ "remission",
+    host_subject_id == "S0037" ~ "active",
+    host_subject_id == "S0041" ~ "active",
+    host_subject_id == "S0043" ~ "active",
+    host_subject_id == "S0047" ~ "remission",
+    host_subject_id == "S0053" ~ "remission",
+    host_subject_id == "S0055" ~ "active",
+    host_subject_id == "S0056" ~ "active",
+    host_subject_id == "S0059" ~ "active",
+  )) %>% 
+  mutate(donor = case_when(
+    host_assigned_donor_subject_id == "is donor" ~ "yes",
+    host_is_fmt_recipient == "True" ~ "no",
+    TRUE ~ donor
+  )) %>% 
+  filter(!host_subject_id %in% c("S0060", "S0061", "S0062", "S0063", "S0064")) %>% 
+  select(bioproject, sample.name, host_subject_id, 
+         host_is_fmt_recipient, host_assigned_donor_subject_id, 
+         collection_days_post_initial_fmt, coll_time, ttm_arm, host_age, host_sex,
+         age, sex, library_id, donor, subject_type, disease_status_end) %>% 
+  mutate(collection_days_post_initial_fmt = case_when(
+    host_subject_id %in% c("D0044", "D0097", "D0485") ~ NA_real_,
+    TRUE ~ collection_days_post_initial_fmt
+  )) %>% 
+  mutate(coll_time = case_when(
+    host_subject_id %in% c("D0044", "D0097", "D0485") ~ "not app",
+    TRUE ~ coll_time
+  )) %>% 
+  mutate(host_sex = case_when(
+    host_subject_id %in% c("D0044", "D0097", "D0485") ~ "not app",
+    host_subject_id == "S0007" ~ "male", 
+    TRUE ~ host_sex
+  )) %>% 
+  mutate(host_age = case_when(
+    host_subject_id %in% c("D0044", "D0097", "D0485") ~ NA_real_,
+    host_subject_id == "S0007" ~ 34, 
+    TRUE ~ host_age
+  )) %>% 
+  mutate(host_is_fmt_recipient = case_when(
+    host_subject_id == "S0007" ~ "True", 
+    TRUE ~ host_is_fmt_recipient
+  )) %>% 
+  mutate(host_assigned_donor_subject_id = case_when(
+    host_subject_id == "S0007" ~ "D0485", 
+    TRUE ~ host_assigned_donor_subject_id
+  )) %>% 
+  select(-c(age, sex, library_id)) %>% 
+  filter(host_subject_id != "") %>% 
+  filter(!host_subject_id %in% c("S0017", "S0043", "S0037", "S0031", "S0029")) %>% 
+  rownames_to_column(var="samples") %>% 
+  filter(grepl("^SRR15", samples)) %>% 
+  column_to_rownames(var="samples")
+
+beep(sound=2)
+
+``` 
+
+
+
+```{r}
+
+metadata_737472_1 <- metadata_737472_1 %>% 
+  mutate(ttm_arm = case_when(
+    ttm_arm == "/" ~ "no data",
+    TRUE ~ ttm_arm 
+  )) %>% 
+  mutate(timepoint = collection_days_post_initial_fmt)
+
+
+saveRDS(metadata_737472_1, "metadata_737472_1.rds")
+names(metadata_737472_1)
+
+beep(sound=2)
+```
+
+## Only keep "disease_status_end" value for last collection of each subject.
+
+```{r}
+
+rownames_df_1 <- rownames(metadata_737472_1)
+
+metadata_737472_1 <- metadata_737472_1 %>%
+  group_by(host_subject_id) %>%
+  mutate(
+    max_collection_day = max(collection_days_post_initial_fmt, na.rm = TRUE),
+    disease_status_end = ifelse(
+      disease_status_end != "healthy" & collection_days_post_initial_fmt != max_collection_day, 
+      NA, 
+      disease_status_end
+    )
+  ) %>%
+  ungroup() %>% 
+  select(-max_collection_day) %>% 
+  rownames_to_column(var="samples") %>% 
+  mutate(timepoint = as.numeric(timepoint)) %>%
+  group_by(host_subject_id) %>%
+  mutate(
+    baseline_status = case_when(
+      timepoint == min(timepoint, na.rm = TRUE) ~ "active", # Assign "active" to the row with the lowest timepoint
+      grepl("^D", host_subject_id) ~ "healthy", 
+      TRUE ~ NA_character_  # Assign NA to other rows 
+    )
+  ) %>% 
+  group_by(host_subject_id) %>%
+  mutate(timepoint = timepoint - min(timepoint)) %>%
+  ungroup()
+
+metadata_737472_1 <- as.data.frame(metadata_737472_1)
+
+rownames(metadata_737472_1) <- rownames_df_1 
+
+beep(sound=2)
+```
+
+
+
+```{r}
+# View(metadata_951422)
+names(metadata_951422)
+
+metadata_951422_1 <- metadata_951422 %>%
+  select(BioProject, Sample.Name, host_subject_id, Host_age, 
+         host_body_mass_index, host_sex, Sample.Name, timepoint, 
+         fecal_calprotectin) %>% 
+  rename_all(tolower) %>% 
+  mutate(timepoint = tolower(timepoint)) %>% 
+  mutate(disease_status = case_when(
+    timepoint == "flare" ~ "active",
+    timepoint == "subjective_flare_but_did_not_meet_criteria_for_clinical_flare" ~ "active",
+    TRUE ~ "remission"
+  )) 
+
+saveRDS(metadata_951422_1, "metadata_951422_1.rds")
+# View(metadata_951422_1)
+
+beep(sound=2)
+```
+
+```{r}
+
+# metadata_737472_1 <- readRDS("metadata_737472_1.rds")
+# metadata_951422_1 <- readRDS("metadata_951422_1.rds")
+
+dim(metadata_737472_1)
+dim(metadata_951422_1)
+
+names(metadata_737472_1)
+names(metadata_951422_1)
+
+met_737472_comb <- cbind(metadata_737472_1, host_body_mass_index=NA, 
+                         fecal_calprotectin=NA, disease_status=NA)
+
+met_951422_comb <- cbind(metadata_951422_1, host_is_fmt_recipient="False", 
+                         coll_time=NA, 
+                         host_assigned_donor_subject_id="not app", ttm_arm="none", 
+                         donor="no", subject_type="UC",
+                         disease_status_end=NA) 
+
+met_737472_comb <- met_737472_comb %>% 
+  select(bioproject, sample.name, host_subject_id, 
+         host_is_fmt_recipient, host_assigned_donor_subject_id, coll_time, 
+         timepoint, ttm_arm, host_age, host_sex, host_body_mass_index, donor, 
+         subject_type, fecal_calprotectin, 
+         baseline_status, disease_status, disease_status_end)
+
+met_951422_comb <- met_951422_comb %>% 
+  select(bioproject, sample.name, host_subject_id, 
+         host_is_fmt_recipient, host_assigned_donor_subject_id, coll_time,
+         timepoint, ttm_arm, host_age, host_sex, host_body_mass_index, donor, 
+         subject_type, fecal_calprotectin, disease_status, 
+         disease_status_end) %>% 
+   mutate(timepoint = case_when(
+    grepl(" mo$", timepoint) ~ as.character(as.numeric(gsub(" mo", "", timepoint)) * 30),
+    TRUE ~ timepoint
+  ))
+
+## Fix 737472 metadata so only the "end" results show on the "disease_status_end" column, and the rest are turned to NA
+
+rownames_df_2 <- rownames(met_737472_comb)
+
+
+met_737472_comb <- as.data.frame(met_737472_comb)
+
+rownames(met_737472_comb) <- rownames_df_2
+
+
+dim(met_737472_comb)
+dim(met_951422_comb)
+
+names(met_737472_comb)
+names(met_951422_comb)
+
+beep(sound=2)
+```
+
+## Find disease status for end timepoint for each subject and add it to disease_status_end column
+
+```{r}
+rownames_df_2 <- rownames(met_951422_comb)
+
+valid_timepoints <- c("90", "180", "270", "360", "450", "540")
+
+met_951422_comb <- met_951422_comb %>% 
+  select(host_subject_id, timepoint, disease_status, disease_status_end, everything()) %>% 
+  rownames_to_column(var="samples") %>% 
+  filter(!grepl("_cross-sectional$", sample.name)) %>% 
+  group_by(host_subject_id) %>% 
+  mutate(timepoint = case_when(
+    timepoint == "baseline" ~ "0",
+    timepoint %in% c("flare", "subjective_flare_but_did_not_meet_criteria_for_clinical_flare") ~ {
+      numeric_timepoints <- as.numeric(timepoint[!timepoint %in% c("flare", "subjective_flare_but_did_not_meet_criteria_for_clinical_flare", "baseline")])
+      if(length(numeric_timepoints) > 0) {
+        as.character(max(numeric_timepoints, na.rm = TRUE) + 90)
+      } else {
+        "90"  
+      }
+    },
+    TRUE ~ as.character(timepoint))) %>% 
+  mutate(timepoint = as.numeric(timepoint)) %>% 
+  mutate(
+    baseline_status = case_when(
+      timepoint == min(timepoint, na.rm = TRUE) ~ disease_status, # Assign disease_status to the row with the lowest timepoint
+      TRUE ~ NA_character_  # Assign NA to other rows 
+    ),
+    disease_status_end = case_when(
+      timepoint == max(timepoint, na.rm = TRUE) ~ disease_status, 
+      TRUE ~ NA_character_   
+    )
+  ) %>%
+  ungroup() %>% 
+  column_to_rownames(var="samples") %>% 
+  select(host_subject_id, timepoint, disease_status, baseline_status, disease_status_end, everything()) 
+
+
+beep(sound=2)
+```
+
+```{r}
+# Process data while keeping row names intact
+# met_951422_comb <- met_951422_comb %>%
+#   rownames_to_column(var="samples") %>% 
+#   group_by(host_subject_id) %>%
+#   mutate(
+#     has_flare = any(timepoint == c("flare", "possible flare")),
+#     highest_existing_timepoint = max(as.numeric(timepoint[timepoint %in% valid_timepoints]), na.rm = TRUE),
+#     timepoint_count = n()  # Count number of timepoints per host_subject_id
+#   ) %>%
+#     mutate(timepoint = case_when(
+#     timepoint == "baseline" ~ "0",
+#     timepoint %in% c("flare", "subjective_flare_but_did_not_meet_criteria_for_clinical_flare") ~ {
+#       numeric_timepoints <- as.numeric(timepoint[!timepoint %in% c("flare", "subjective_flare_but_did_not_meet_criteria_for_clinical_flare", "baseline")])
+#       if(length(numeric_timepoints) > 0) {
+#         as.character(max(numeric_timepoints, na.rm = TRUE) + 90)
+#       } else {
+#         "90"  # Default to 90 if no numeric timepoints are found
+#       }
+#     },
+#     TRUE ~ as.character(timepoint)
+#   )) %>% 
+#   ungroup() %>%
+#   filter(!grepl("_cross-sectional$", sample.name)) %>% 
+#   mutate(
+#     disease_status_end = case_when(
+#       has_flare & timepoint == "flare" ~ disease_status,  # If "Flare" exists, copy its disease_status
+#       !has_flare & timepoint == "540" ~ disease_status,   # If no "Flare", copy disease_status from "540"
+#       !has_flare & is.na(highest_existing_timepoint) ~ disease_status_end,  # If no valid timepoints, do nothing
+#       !has_flare & as.numeric(timepoint) == highest_existing_timepoint ~ disease_status,  # Copy from highest available timepoint
+#       timepoint_count == 1 ~ disease_status,  # If only one timepoint exists for host_subject_id, copy its disease_status
+#       TRUE ~ disease_status_end  # Keep existing values
+#     )
+#   ) %>%
+#   mutate(baseline_status = "remission") %>% 
+#   select(-has_flare, -highest_existing_timepoint, -timepoint_count) %>%  # Remove helper columns
+#   group_by(host_subject_id) %>% 
+#   
+#   ungroup() %>% 
+#   column_to_rownames(var="samples")
+  
+met_951422_comb$timepoint <- as.numeric(met_951422_comb$timepoint)
+
+
+# Convert to data frame
+met_951422_comb <- as.data.frame(met_951422_comb)
+
+
+```
+
+
+## Check how many samples of the same timepoint are taken for each subject.
+```{r}
+# # Count occurrences of each (host_subject_id, timepoint) combination
+# duplicates <- met_951422_comb %>%
+#   count(host_subject_id, timepoint) %>%
+#   filter(n > 1)  # Keep only duplicates (n > 1)
+# 
+# # Print the duplicate combinations
+# print(duplicates)
+# 
+# # Count total number of duplicate cases
+# total_duplicates <- sum(duplicates$n) - nrow(duplicates)  # Exclude one occurrence per duplicate group
+# cat("Total duplicate cases:", total_duplicates, "\n")
+# 
+# beep(sound=2)
+```
+
+
+
+```{r}
+
+dim(met_737472_comb)
+dim(met_951422_comb)
+colnames(met_737472_comb)
+colnames(met_951422_comb)
+
+saveRDS(met_737472_comb, "met_737472_comb.rds")
+saveRDS(met_951422_comb, "met_951422_comb.rds")
+
+metadata_merged <- rbind(met_737472_comb, met_951422_comb)
+
+
+metadata_merged <- metadata_merged %>% 
+  mutate(bioproject = case_when(
+    bioproject == "PRJNA737472" ~ 1,
+    bioproject == "PRJNA951422" ~ 2 
+  )) %>% 
+  mutate(disease_status = case_when(
+    subject_type == "Healthy" ~ "healthy",
+    TRUE ~ disease_status
+  ))
+
+
+saveRDS(metadata_merged, "metadata_merged.rds")
+beep(sound=2)
+```
+
+
+```{r}
+metadata_merged <- metadata_merged %>% 
+  rownames_to_column(var="samples") %>% 
+  group_by(host_subject_id) %>% 
+  mutate(group = paste(na.omit(baseline_status), na.omit(disease_status_end), sep="-")) %>% 
+  filter(n() > 1) %>% 
+  ungroup() %>% 
+  column_to_rownames(var="samples") 
+  
+meta_merged <- metadata_merged %>% 
+  mutate(timepoint = as.numeric(timepoint)) %>% 
+  mutate(week = floor(timepoint/7)) %>% 
+  mutate(week = factor(week))
+
+
+saveRDS(meta_merged, "meta_merged.rds")
+
+```
+
