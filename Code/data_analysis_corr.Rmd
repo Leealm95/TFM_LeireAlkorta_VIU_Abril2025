@@ -2111,13 +2111,72 @@ significant_taxa_kw <- kruskal_test_results %>% filter(p.adj < 0.05)
 
 significant_taxa_kw
 
-significant_taxa_kw %>% 
+write.csv(significant_taxa_kw, "../Results/significant_taxa_kw.csv", row.names = FALSE)
+
+
+top_20_sig_taxa <- significant_taxa_kw %>% 
   arrange(p.adj) %>% 
   head(n=20)
+
+top_20_sig_taxa
+
+write.csv(top_20_sig_taxa, "../Results/top_20_sig_taxa.csv", row.names = FALSE)
+
 
 top_10_sig_taxa <- significant_taxa_kw %>% arrange(p.adj) %>% head(n=10)
 
 top_10_sig_taxa
+
+write.csv(top_10_sig_taxa, "../Results/top_10_sig_taxa.csv", row.names = FALSE)
+
+
+```
+
+
+```{r}
+taxa_abund_kw <- as.data.frame(t(otu_table(ps_filt_fixed_gen_rel_pat)))
+
+taxa_abund_kw <- taxa_abund_kw %>% 
+  tibble::rownames_to_column(var = "samples")
+
+metadata_samples_kw <- as(sample_data(ps_filt_fixed_gen_rel_pat), "data.frame") %>% 
+  tibble::rownames_to_column(var = "samples") %>% 
+  select(c(samples, group))
+
+
+taxa_data_kw <- left_join(metadata_samples_kw, taxa_abund_kw, by = "samples") 
+
+taxa_data_kw_tib <- taxa_data_kw %>%
+  as_tibble()  
+
+kruskal_test_results <- taxa_data_kw_tib %>%
+  pivot_longer(cols = -c(samples, group), names_to = "taxon", values_to = "abundance") %>%
+  group_by(taxon) %>%
+  rstatix::kruskal_test(abundance ~ group) %>%
+  rstatix::adjust_pvalue(method = "BH") %>%  # Adjust for multiple testing (Benjamini-Hochberg)
+  arrange(p.adj)
+
+significant_taxa_kw <- kruskal_test_results %>% filter(p.adj < 0.05)
+
+significant_taxa_kw
+
+write.csv(significant_taxa_kw, "../Results/significant_taxa_kw.csv", row.names = FALSE)
+
+
+top_20_sig_taxa <- significant_taxa_kw %>% 
+  arrange(p.adj) %>% 
+  head(n=20)
+
+top_20_sig_taxa
+
+write.csv(top_20_sig_taxa, "../Results/top_20_sig_taxa.csv", row.names = FALSE)
+
+
+top_10_sig_taxa <- significant_taxa_kw %>% arrange(p.adj) %>% head(n=10)
+
+top_10_sig_taxa
+
+write.csv(top_10_sig_taxa, "../Results/top_10_sig_taxa.csv", row.names = FALSE)
 
 ```
 
@@ -2152,6 +2211,9 @@ sig_pairs %>% arrange(p.adj) %>% head(n=20)
 
 dunn_test_taxa %>% kbl() %>% 
   kableExtra::kable_paper(font_size=12)
+
+write.csv(sig_pairs, "../Results/sig_pairs.csv", row.names = FALSE)
+
 
 ```
 
@@ -2201,6 +2263,54 @@ fit_data_genus <- Maaslin2::Maaslin2(
     input_data = input_data_genus_Maaslin,
     input_metadata = input_sample_metadata,
     output = output_directory_genus,
+    analysis_method = "LM",
+    fixed_effects = "group",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0,
+    reference = "group,healthy-healthy")
+
+```
+```{r}
+
+input_sample_metadata_fam <- ps_filt_fixed_fam_rel %>% meta
+input_data_genus_Maaslin_fam <- as.data.frame(otu_table(ps_filt_fixed_fam_rel))
+
+input_data_genus_Maaslin_fam <- input_data_genus_Maaslin_fam[sapply(input_data_genus_Maaslin_fam, is.numeric)]
+
+output_directory_family <- "../Results/Maaslin2_output_family"
+
+fit_data_fam <- Maaslin2::Maaslin2(
+    input_data = input_data_genus_Maaslin_fam,
+    input_metadata = input_sample_metadata_fam,
+    output = output_directory_family,
+    analysis_method = "LM",
+    fixed_effects = "group",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0,
+    reference = "group,healthy-healthy")
+
+```
+
+
+```{r}
+
+input_sample_metadata_ord <- ps_filt_fixed_ord_rel %>% meta
+input_data_Maaslin_ord <- as.data.frame(otu_table(ps_filt_fixed_ord_rel))
+
+input_data_Maaslin_ord <- input_data_Maaslin_ord[sapply(input_data_Maaslin_ord, is.numeric)]
+
+output_directory_order <- "../Results/Maaslin2_output_order"
+
+fit_data_ord <- Maaslin2::Maaslin2(
+    input_data = input_data_Maaslin_ord,
+    input_metadata = input_sample_metadata_ord,
+    output = output_directory_order,
     analysis_method = "LM",
     fixed_effects = "group",
     normalization = "NONE", 
@@ -2266,7 +2376,7 @@ fit_data_genus_pat <- Maaslin2::Maaslin2(
     input_metadata = input_sample_metadata_pat,
     output = output_directory_genus,
     analysis_method = "LM",
-    fixed_effects = c("group", "host_sex", "host_age"),
+    fixed_effects = "group",
     # random_effects = "host_subject_id",
     normalization = "NONE", 
     correction = "BH",
@@ -2274,6 +2384,91 @@ fit_data_genus_pat <- Maaslin2::Maaslin2(
     min_abundance = 0,
     min_prevalence = 0.01,
     reference = "group,active-remission")
+
+```
+
+```{r}
+ps_filt_fixed_fam_rel_pat <- ps_filt_fixed_fam_rel %>% ps_filter(host_assigned_donor_subject_id != "is donor")
+ps_filt_fixed_fam_rel_pat_end <- ps_filt_fixed_fam_rel_pat %>% ps_filter(!is.na(disease_status_end))
+
+input_sample_metadata_pat_fam <- ps_filt_fixed_fam_rel_pat_end %>% meta
+input_data_fam_Maaslin_pat <- as.data.frame(otu_table(ps_filt_fixed_fam_rel_pat_end))
+
+input_data_fam_Maaslin_pat <- input_data_fam_Maaslin_pat[sapply(input_data_fam_Maaslin_pat, is.numeric)]
+input_sample_metadata_pat_fam <- input_sample_metadata_pat %>% mutate(disease_status_end = as.factor(disease_status_end))
+
+
+output_directory_fam <- "../Results/Maaslin2_output_fam_pat"
+
+fit_data_fam_pat <- Maaslin2::Maaslin2(
+    input_data = input_data_fam_Maaslin_pat,
+    input_metadata = input_sample_metadata_pat_fam,
+    output = output_directory_fam,
+    analysis_method = "LM",
+    fixed_effects = "disease_status_end",
+    # random_effects = "host_subject_id",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0.01,
+    reference = "disease_status_end,active")
+
+```
+
+```{r}
+ps_filt_fixed_fam_rel_end <- ps_filt_fixed_fam_rel %>% ps_filter(!is.na(disease_status_end))
+
+input_sample_metadata_end_fam <- ps_filt_fixed_fam_rel_end %>% meta
+input_data_fam_Maaslin_end <- as.data.frame(otu_table(ps_filt_fixed_fam_rel_end))
+
+input_data_fam_Maaslin_end <- input_data_fam_Maaslin_end[sapply(input_data_fam_Maaslin_end, is.numeric)]
+input_sample_metadata_end_fam <- input_sample_metadata_end_fam %>% mutate(disease_status_end = as.factor(disease_status_end))
+
+
+output_directory_fam_end <- "../Results/Maaslin2_output_fam_end"
+
+fit_data_fam_pat <- Maaslin2::Maaslin2(
+    input_data = input_data_fam_Maaslin_end,
+    input_metadata = input_sample_metadata_end_fam,
+    output = output_directory_fam_end,
+    analysis_method = "LM",
+    fixed_effects = "disease_status_end",
+    # random_effects = "host_subject_id",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0.01,
+    reference = "disease_status_end,active")
+
+```
+
+```{r}
+ps_filt_fixed_phy_rel_end <- ps_filt_fixed_phy_rel %>% ps_filter(!is.na(disease_status_end))
+
+input_sample_metadata_end_phy <- ps_filt_fixed_phy_rel_end %>% meta
+input_data_phy_Maaslin_end <- as.data.frame(otu_table(ps_filt_fixed_phy_rel_end))
+
+input_data_phy_Maaslin_end <- input_data_phy_Maaslin_end[sapply(input_data_phy_Maaslin_end, is.numeric)]
+input_sample_metadata_end_phy <- input_sample_metadata_end_phy %>% mutate(disease_status_end = as.factor(disease_status_end))
+
+
+output_directory_phy_end <- "../Results/Maaslin2_output_phy_end"
+
+fit_data_phy_pat <- Maaslin2::Maaslin2(
+    input_data = input_data_phy_Maaslin_end,
+    input_metadata = input_sample_metadata_end_phy,
+    output = output_directory_phy_end,
+    analysis_method = "LM",
+    fixed_effects = "disease_status_end",
+    # random_effects = "host_subject_id",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0.01,
+    reference = "disease_status_end,healthy")
 
 ```
 
@@ -2463,6 +2658,68 @@ plots_genus_end_active <- create_genus_end_barplots(ps_filt_fixed_end, "active",
 plots_genus_end_healthy
 plots_genus_end_remission
 plots_genus_end_active
+
+```
+
+
+```{r}
+
+ps_filt_fixed_end_gen_rel <- tax_transform(ps_filt_fixed_end_genus, trans = "compositional")
+ps_filt_fixed_end_gen_rel_pat <- ps_filt_fixed_end_gen_rel %>% ps_filter(donor == "no")
+
+input_sample_metadata_end_pat <- ps_filt_fixed_end_gen_rel_pat %>% meta
+input_data_genus_Maaslin_end_pat <- as.data.frame(otu_table(ps_filt_fixed_end_gen_rel_pat))
+
+input_data_genus_Maaslin_end_pat <- input_data_genus_Maaslin_end_pat[sapply(input_data_genus_Maaslin_end_pat, is.numeric)]
+input_sample_metadata_end_pat <- input_sample_metadata_end_pat %>% mutate(disease_status_end = as.factor(disease_status_end))
+
+
+output_directory_genus_end_pat <- "../Results/Maaslin2_output_genus_end_pat"
+
+fit_data_genus_end_pat <- Maaslin2::Maaslin2(
+    input_data = input_data_genus_Maaslin_end_pat,
+    input_metadata = input_sample_metadata_end_pat,
+    output = output_directory_genus_end_pat,
+    analysis_method = "LM",
+    fixed_effects = "disease_status_end",
+    # random_effects = "host_subject_id",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0.01,
+    reference = "disease_status_end,active")
+
+```
+
+
+
+
+```{r}
+ps_filt_fixed_end_gen_rel <- tax_transform(ps_filt_fixed_end_genus, trans = "compositional")
+
+input_sample_metadata_end <- ps_filt_fixed_end_gen_rel %>% meta
+input_data_genus_Maaslin_end <- as.data.frame(otu_table(ps_filt_fixed_end_gen_rel))
+
+input_data_genus_Maaslin_end <- input_data_genus_Maaslin_end[sapply(input_data_genus_Maaslin_end, is.numeric)]
+input_sample_metadata_end <- input_sample_metadata_end %>% mutate(disease_status_end = as.factor(disease_status_end))
+
+
+output_directory_genus_end <- "../Results/Maaslin2_output_genus_end"
+
+fit_data_genus_end <- Maaslin2::Maaslin2(
+    input_data = input_data_genus_Maaslin_end,
+    input_metadata = input_sample_metadata_end,
+    output = output_directory_genus_end,
+    analysis_method = "LM",
+    fixed_effects = "disease_status_end",
+    # random_effects = "host_subject_id",
+    normalization = "NONE", 
+    correction = "BH",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0.01,
+    reference = "disease_status_end,active")
 
 ```
 

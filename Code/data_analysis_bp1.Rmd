@@ -1957,14 +1957,14 @@ fit_data_genus_pat_1 <- Maaslin2::Maaslin2(
     input_metadata = input_sample_metadata_pat_1,
     output = output_directory_genus_1,
     analysis_method = "LM",
-    fixed_effects = c("group", "host_sex", "host_age"),
-    random_effects = "host_subject_id",
+    fixed_effects = "group",
+    # random_effects = "host_subject_id",
     normalization = "NONE", 
     correction = "BH",
     transform = "LOG",
     min_abundance = 0,
     min_prevalence = 0.01,
-    reference = "group,active-active")
+    reference = "group,active-remission")
 
 ```
 
@@ -1978,25 +1978,25 @@ head(fit_data_genus_1$results, n=20) %>% kbl() %>%
 
 
 ```{r}
-taxa_abund_kw_1 <- as.data.frame(otu_table(ps_filt_fixed_genus_1))
+taxa_abund_kw_1 <- as.data.frame(otu_table(ps_filt_fixed_gen_rel_1))
 
 # Convert row names to a column (sample IDs)
-taxa_abund_kw_1 <- taxa_abund_kw_1 %>% 
+taxa_abund_kw_1 <- taxa_abund_kw_1 %>%
   tibble::rownames_to_column(var = "samples")
 
 # Convert sample_data from phyloseq object to a proper data frame
-metadata_samples_kw_1 <- as(sample_data(ps_filt_fixed_genus_1), "data.frame") %>% 
+metadata_samples_kw_1 <- as(sample_data(ps_filt_fixed_gen_rel_1), "data.frame") %>%
   tibble::rownames_to_column(var = "samples") # Ensure sample IDs are a column
 
-metadata_samples_kw_1 <- metadata_samples_kw_1 %>% 
+metadata_samples_kw_1 <- metadata_samples_kw_1 %>%
   select(c(samples, group))
 
 
 # Merge metadata with abundance data
-taxa_data_kw_1 <- left_join(metadata_samples_kw_1, taxa_abund_kw_1, by = "samples") 
+taxa_data_kw_1 <- left_join(metadata_samples_kw_1, taxa_abund_kw_1, by = "samples")
 
 taxa_data_kw_tib_1 <- taxa_data_kw_1 %>%
-  as_tibble()  
+  as_tibble()
 
 # Function to perform Kruskal-Wallis test on each taxon
 kruskal_test_results_1 <- taxa_data_kw_tib_1 %>%
@@ -2009,14 +2009,83 @@ kruskal_test_results_1 <- taxa_data_kw_tib_1 %>%
 # View significant results (p.adj < 0.05)
 significant_taxa_kw_1 <- kruskal_test_results_1 %>% filter(p.adj < 0.05)
 
+write.csv(significant_taxa_kw_1, "../Results/significant_taxa_kw_1.csv", row.names = FALSE)
+
+
 # Display top results
-significant_taxa_kw_1 %>% 
-  arrange(p.adj) %>% 
+top_20_sig_taxa_1 <- significant_taxa_kw_1 %>%
+  arrange(p.adj) %>%
   head(n=20)
+
+top_20_sig_taxa_1
+
+write.csv(top_20_sig_taxa_1, "../Results/top_20_sig_taxa_1.csv", row.names = FALSE)
+
 
 top_10_sig_taxa_1 <- significant_taxa_kw_1 %>% arrange(p.adj) %>% head(n=10)
 
 top_10_sig_taxa_1
+
+write.csv(top_10_sig_taxa_1, "../Results/top_10_sig_taxa_1.csv", row.names = FALSE)
+
+
+```
+```{r}
+# ps_filt_fixed_gen_rel_pat_1 <- ps_filt_fixed_gen_rel_1 %>% ps_filter(donor == "no")
+# 
+# ps_filt_fixed_genus_pat_end_1 <- ps_filt_fixed_gen_rel_pat_1 %>% ps_filter(!is.na(disease_status_end))
+# 
+# taxa_abund_kw_1 <- as.data.frame(otu_table(ps_filt_fixed_genus_pat_end_1))
+# 
+# # Convert row names to a column (sample IDs)
+# taxa_abund_kw_1 <- taxa_abund_kw_1 %>% 
+#   tibble::rownames_to_column(var = "samples")
+# 
+# # Convert sample_data from phyloseq object to a proper data frame
+# metadata_samples_kw_1 <- as(sample_data(ps_filt_fixed_genus_pat_end_1), "data.frame") %>% 
+#   tibble::rownames_to_column(var = "samples") # Ensure sample IDs are a column
+# 
+# metadata_samples_kw_1 <- metadata_samples_kw_1 %>% 
+#   select(c(samples, disease_status_end))
+# 
+# 
+# # Merge metadata with abundance data
+# taxa_data_kw_1 <- left_join(metadata_samples_kw_1, taxa_abund_kw_1, by = "samples") 
+# 
+# taxa_data_kw_tib_1 <- taxa_data_kw_1 %>%
+#   as_tibble()  
+# 
+# # Function to perform Kruskal-Wallis test on each taxon
+# kruskal_test_results_1 <- taxa_data_kw_tib_1 %>%
+#   pivot_longer(cols = -c(samples, disease_status_end), names_to = "taxon", values_to = "abundance") %>%
+#   group_by(taxon) %>%
+#   rstatix::kruskal_test(abundance ~ disease_status_end) %>%
+#   rstatix::adjust_pvalue(method = "BH") %>%  # Adjust for multiple testing (Benjamini-Hochberg)
+#   arrange(p.adj)
+# 
+# # View significant results (p.adj < 0.05)
+# significant_taxa_kw_1 <- kruskal_test_results_1 %>% filter(p.adj < 0.05)
+# significant_taxa_kw_1
+# 
+# write.csv(significant_taxa_kw_1, "../Results/significant_taxa_kw_1.csv", row.names = FALSE)
+# 
+# 
+# # Display top results
+# top_20_sig_taxa_1 <- significant_taxa_kw_1 %>% 
+#   arrange(p.adj) %>% 
+#   head(n=20)
+# 
+# top_20_sig_taxa_1
+# 
+# write.csv(top_20_sig_taxa_1, "../Results/top_20_sig_taxa_1.csv", row.names = FALSE)
+# 
+# 
+# top_10_sig_taxa_1 <- significant_taxa_kw_1 %>% arrange(p.adj) %>% head(n=10)
+# 
+# top_10_sig_taxa_1
+# 
+# write.csv(top_10_sig_taxa_1, "../Results/top_10_sig_taxa_1.csv", row.names = FALSE)
+# 
 
 ```
 

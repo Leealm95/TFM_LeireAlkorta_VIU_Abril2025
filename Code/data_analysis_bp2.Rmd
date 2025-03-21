@@ -174,11 +174,11 @@ head((sum_of_reads_2 %>% arrange(sum_of_reads_2)), n=20)%>% kbl() %>%
 
 ```{r}
 sum_of_reads_2 %>% arrange(sum_of_reads_2) %>% 
-  ggplot(aes(x = reorder(samples, sum_of_reads_2), y = sum_of_reads_2, fill = group)) +
+  ggplot(aes(x = reorder(samples, sum_of_reads_2), y = sum_of_reads_2, fill = disease_status)) +
   geom_point(shape = 21, size = 2, color = "black")+
   scale_fill_manual(values = c(
-    "remission-remission" = "orange",
-    "remission-active" = "darkred"
+    "remission" = "orange",
+    "active" = "darkred"
     ))+
   labs(x = "samples")+
   theme_bw()+
@@ -1653,7 +1653,7 @@ fit_data_genus_2 <- Maaslin2::Maaslin2(
     input_metadata = input_sample_metadata_2,
     output = output_directory_genus_2,
     analysis_method = "LM",
-    fixed_effects = c("group", "host_sex", "host_age"),
+    fixed_effects = "group",
     random_effects = "host_subject_id",
     normalization = "NONE", 
     correction = "BH",
@@ -1674,14 +1674,14 @@ head(fit_data_genus_2$results, n=20) %>% kbl() %>%
 
 
 ```{r}
-taxa_abund_kw_2 <- as.data.frame(otu_table(ps_filt_fixed_genus_2))
+taxa_abund_kw_2 <- as.data.frame(otu_table(ps_filt_fixed_gen_rel_2))
 
 # Convert row names to a column (sample IDs)
 taxa_abund_kw_2 <- taxa_abund_kw_2 %>% 
   tibble::rownames_to_column(var = "samples")
 
 # Convert sample_data from phyloseq object to a proper data frame
-metadata_samples_kw_2 <- as(sample_data(ps_filt_fixed_genus_2), "data.frame") %>% 
+metadata_samples_kw_2 <- as(sample_data(ps_filt_fixed_gen_rel_2), "data.frame") %>% 
   tibble::rownames_to_column(var = "samples") # Ensure sample IDs are a column
 
 metadata_samples_kw_2 <- metadata_samples_kw_2 %>% 
@@ -1705,14 +1705,22 @@ kruskal_test_results_2 <- taxa_data_kw_tib_2 %>%
 # View significant results (p.adj < 0.05)
 significant_taxa_kw_2 <- kruskal_test_results_2 %>% filter(p.adj < 0.05)
 
+write.csv(significant_taxa_kw_2, "../Results/significant_taxa_kw_2.csv", row.names = FALSE)
+
 # Display top results
-significant_taxa_kw_2 %>% 
+top_20_sig_taxa_2 <- significant_taxa_kw_2 %>% 
   arrange(p.adj) %>% 
   head(n=20)
+
+write.csv(top_20_sig_taxa_2, "../Results/top_20_sig_taxa_2.csv", row.names = FALSE)
+
 
 top_10_sig_taxa_2 <- significant_taxa_kw_2 %>% arrange(p.adj) %>% head(n=10)
 
 top_10_sig_taxa_2
+
+write.csv(top_10_sig_taxa_2, "../Results/top_10_sig_taxa_2.csv", row.names = FALSE)
+
 
 ```
 
